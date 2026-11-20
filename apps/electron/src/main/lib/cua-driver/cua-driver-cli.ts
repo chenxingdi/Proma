@@ -22,6 +22,7 @@ import type {
 import { CUA_DRIVER_IPC_CHANNELS } from '@proma/shared'
 import { execFileAsync } from '../async-command'
 import { parseCheckUpdateOutput } from './cua-driver-parse'
+import { resolveInstallOutcome } from './cua-driver-outcome'
 
 let currentStatus: CuaDriverUpdateStatus = { status: 'idle' }
 let inFlight: Promise<CuaDriverUpdateResult> | null = null
@@ -81,6 +82,26 @@ export async function getCuaDriverInfo(): Promise<CuaDriverInfo> {
     console.warn('[Cua Driver] 读取版本失败:', error)
   }
   return { installed: true, version, path: exe, platform: platformLabel() }
+}
+
+/**
+ * 读取磁盘上 cua-driver 的真实版本（独立于 daemon 与更新命令）。
+ * 官方安装器可能已成功替换二进制，但因陈旧 daemon 等副作用返回非零退出码，
+ * 此时必须以磁盘上的实际版本为准，避免把"已装好"误判为失败。
+ */
+export async function readInstalledCuaDriverVersion(): Promise<string> {
+  const exe = resolveCuaDriverExecutable()
+  if (!exe || !existsSync(exe)) return ''
+  try {
+    const { stdout } = await execFileAsync(exe, ['--version'], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      env: signedEnv(),
+    })
+    return stdout.match(/(\d+\.\d+\.\d+)/)?.[1] ?? ''
+  } catch {
+    return ''
+  }
 }
 
 /** 调用官方 check-update --json。 */
@@ -147,21 +168,46 @@ async function doCheckAndUpdate(): Promise<CuaDriverUpdateResult> {
 
     setStatus({ status: 'installing', version: check.latest_version })
     const bin = resolveCuaDriverExecutable()
-    const { stdout, stderr } = await execFileAsync(bin, ['update', '--apply', '--json'], {
-      encoding: 'utf-8',
-      timeout: 5 * 60_000,
-      env: signedEnv(),
-    })
-    console.log('[Cua Driver] 官方安装器输出:', stdout.trim() || stderr.trim())
-
-    setStatus({ status: 'updated', version: check.latest_version, previousVersion: check.current_version })
-    return {
-      status: 'updated',
-      version: check.latest_version,
-      previousVersion: check.current_version,
-      message: `Cua Driver 已从 ${check.current_version} 更新到 ${check.latest_version}（官方安装器，已强制签名校验）`,
-      check,
+    let installerSucceeded = false
+    let installerError = ''
+    try {
+      const { stdout, stderr } = await execFileAsync(bin, ['update', '--apply', '--json'], {
+        encoding: 'utf-8',
+        timeout: 5 * 60_000,
+        env: signedEnv(),
+      })
+      installerSucceeded = true
+      console.log('[Cua Driver] 官方安装器输出:', stdout.trim() || stderr.trim())
+    } catch (error) {
+      // 安装器可能因陈旧 daemon 等副作用返回非零；不能就此判定失败，
+      // 需复核磁盘实际版本（官方安装器通常已完成二进制替换）。
+      installerError = error instanceof Error ? error.message : String(error)
+      console.warn('[Cua Driver] 更新命令返回错误，正在复核实际版本:', installerError)
     }
+
+    const installedVersion = await readInstalledCuaDriverVersion()
+    const outcome = resolveInstallOutcome({
+      targetVersion: check.latest_version,
+      currentVersion: check.current_version,
+      installedVersion,
+      installerError,
+      installerSucceeded,
+    })
+
+    if (outcome.updated) {
+      setStatus({ status: 'updated', version: outcome.version, previousVersion: outcome.previousVersion })
+      return {
+        status: 'updated',
+        version: outcome.version,
+        previousVersion: outcome.previousVersion,
+        message: outcome.message,
+        check,
+      }
+    }
+
+    console.error('[Cua Driver] 更新失败:', installerError)
+    setStatus({ status: 'error', error: outcome.message })
+    return { status: 'error', version: '', message: outcome.message, check }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error('[Cua Driver] 更新失败:', error)

@@ -1,6 +1,6 @@
 # GitHub Actions: 自动打包分发（仅 Windows）
 #
-# 触发条件：推送 v* tag（如 v0.19.59）
+# 触发条件：推送 v* tag（如 v0.19.60）
 # 只构建 Windows x64 产物并发布到 GitHub Releases。
 # GITHUB_TOKEN 由 GitHub Actions 自动提供，无需手动配置。
 
@@ -14,9 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要构建的 tag（如 v0.19.59）'
+        description: '要构建的 tag（如 v0.19.60）'
         required: true
-        default: 'v0.19.59'
+        default: 'v0.19.60'
 
 permissions:
   contents: write
