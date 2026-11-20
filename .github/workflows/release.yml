@@ -65,3 +65,44 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --win --x64 --publish always
         working-directory: apps/electron
+      - name: 发布草稿 Release 为正式版
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v$(node -p "require('./apps/electron/package.json').version")"
+          echo "目标 tag: $TAG"
+          TAG="$TAG" node --input-type=commonjs <<'NODE'
+          const token = process.env.GH_TOKEN
+          const repo = process.env.GITHUB_REPOSITORY
+          const tag = process.env.TAG
+          const headers = {
+            Authorization: `token ${token}`,
+            Accept: 'application/vnd.github+json',
+            'User-Agent': 'proma-release',
+          }
+          ;(async () => {
+            const listRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers })
+            const releases = await listRes.json()
+            const rel = Array.isArray(releases) && releases.find((r) => r.tag_name === tag)
+            if (!rel) {
+              console.log(`未找到 ${tag} 的 Release，跳过（可能已是正式版或创建失败）`)
+              return
+            }
+            if (!rel.draft) {
+              console.log(`${tag} 已是正式发布，跳过`)
+              return
+            }
+            const patchRes = await fetch(`https://api.github.com/repos/${repo}/releases/${rel.id}`, {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ draft: false }),
+            })
+            const patched = await patchRes.json()
+            if (!patchRes.ok) {
+              console.error('发布失败:', patched)
+              process.exit(1)
+            }
+            console.log(`已发布 ${tag}: ${patched.html_url}`)
+          })().catch((e) => { console.error(e); process.exit(1) })
+          NODE
