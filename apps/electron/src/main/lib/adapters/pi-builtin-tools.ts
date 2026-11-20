@@ -40,6 +40,7 @@ import { getWorktreeRepos, getAgentWorkspace, listAgentWorkspaces, listAgentWork
 import { resolveAutomationWorkspace, summarizeAutomationWorkspace } from './automation-workspace'
 import { downloadInstaller, launchInstaller } from '../installer-downloader'
 import { fetchInstallerManifest, findInstallerSource } from '../installer-manifest'
+import { checkAndUpdateCuaDriver } from '../cua-driver/cua-driver-cli'
 import { shouldOfferWindowsShellInstaller } from './windows-shell-installer'
 import { buildPiCollaborationTools } from '../agent-collaboration-tools'
 import { serializePiToolResultPayload } from './pi-tool-result-json'
@@ -871,6 +872,24 @@ function buildPlanningTools(sdk: PiSdk, ctx: PiBuiltinToolsContext): ToolDefinit
   ] as unknown as ToolDefinition[]
 }
 
+// ===== Cua Driver 更新 =====
+
+function buildCuaDriverTools(sdk: PiSdk): ToolDefinition[] {
+  return [
+    sdk.defineTool({
+      name: 'CuaDriverUpdate',
+      label: '更新 Cua Driver',
+      description: '检查 Cua Driver 是否有新版本，发现新版即调用其官方更新命令安装。官方安装器自带 Sigstore 与 SHA256SUMS 签名校验。仅在用户要求检查/更新 Cua Driver 或桌面自动化驱动时使用。',
+      promptSnippet: 'CuaDriverUpdate: check and install the latest Cua Driver via its official updater.',
+      parameters: Type.Object({}),
+      async execute() {
+        const result = await checkAndUpdateCuaDriver(true)
+        return jsonToolResult(result)
+      },
+    }),
+  ] as unknown as ToolDefinition[]
+}
+
 // ===== Windows Shell 安装 =====
 
 function buildWindowsShellInstallerTools(sdk: PiSdk, ctx: PiBuiltinToolsContext): ToolDefinition[] {
@@ -1620,6 +1639,18 @@ export async function buildPiBuiltinTools(
     tools.push(...buildWindowsShellInstallerTools(sdk, ctx))
   } catch (error) {
     console.error('[Pi 桥接] 注入 Windows Shell 安装工具失败:', error)
+  }
+
+  // Cua Driver：注入手动检查工具，并在发现新版本时主动发起更新（发现即更新）。
+  try {
+    tools.push(...buildCuaDriverTools(sdk))
+    if (ctx.triggeredBy !== 'delegation') {
+      void checkAndUpdateCuaDriver().catch((error) => {
+        console.error('[Cua Driver] 自动更新检查失败:', error)
+      })
+    }
+  } catch (error) {
+    console.error('[Pi 桥接] 注入 Cua Driver 更新工具失败:', error)
   }
 
   // Worktree 选择让 Agent 在创建或发现分支目录后主动绑定会话，不扩大既有授权范围。

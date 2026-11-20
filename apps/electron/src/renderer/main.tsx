@@ -41,6 +41,7 @@ import {
   unviewedCompletedSessionIdsAtom,
 } from './atoms/agent-atoms'
 import { updateStatusAtom, initializeUpdater } from './atoms/updater'
+import { cuaDriverStatusAtom, initializeCuaDriverStatus } from './atoms/cua-driver'
 import { automationsAtom } from './atoms/automation-atoms'
 import { calendarEventsAtom, calendarPlanningGroupsAtom, planningTagsAtom, todoPlanningGroupsAtom, todosAtom } from './atoms/planning-atoms'
 import { mergeTodoSnapshot, upsertTodo } from './lib/todo-state'
@@ -342,10 +343,12 @@ function UpdaterInitializer(): null {
   const readyToastIdRef = useRef<string | number | null>(null)
   const scheduledToastIdRef = useRef<string | number | null>(null)
 
+  const setCuaDriverStatus = useSetAtom(cuaDriverStatusAtom)
   useEffect(() => {
     const cleanup = initializeUpdater(setUpdateStatus)
-    return cleanup
-  }, [setUpdateStatus])
+    const cleanupCuaDriver = initializeCuaDriverStatus(setCuaDriverStatus)
+    return () => { cleanup(); cleanupCuaDriver() }
+  }, [setUpdateStatus, setCuaDriverStatus])
 
   const showDownloadedUpdateReminder = React.useCallback((version: string): void => {
     if (readyToastIdRef.current !== null) {

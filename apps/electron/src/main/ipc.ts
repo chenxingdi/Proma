@@ -178,6 +178,7 @@ import {
   clearVaultUserContext,
 } from './lib/vault-service'
 import { registerUpdaterIpc } from './lib/updater/updater-ipc'
+import { registerCuaDriverIpc } from './lib/cua-driver/cua-driver-ipc'
 import {
   listChannels,
   createChannel,
@@ -5371,6 +5372,9 @@ export function registerIpcHandlers(): void {
 
   // 注册更新 IPC 处理器
   registerUpdaterIpc()
+
+  // 注册 Cua Driver 更新 IPC 处理器
+  registerCuaDriverIpc()
 
   // 启动时自动归档 + 每 24 小时定期检查
   const runAutoArchive = (): void => {

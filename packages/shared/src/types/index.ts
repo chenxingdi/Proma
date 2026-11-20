@@ -68,3 +68,6 @@ export * from './agent-island'
 
 // 用户授权的 Markdown Vault 相关类型
 export * from './vault'
+
+// Cua Driver 自动更新相关类型
+export * from './cua-driver'

@@ -25,6 +25,7 @@ import {
   Mic,
   HardDriveDownload,
   HardDrive,
+  Monitor,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ShortcutKeycaps } from "@/components/shortcuts/ShortcutKeycaps";
@@ -61,6 +62,7 @@ import { PromptSettings } from "./PromptSettings";
 import { BotHubSettings } from "./BotHubSettings";
 import { ShortcutSettings } from "./ShortcutSettings";
 import { VoiceInputSettings } from "./VoiceInputSettings";
+import { ComputerUseSettings } from "./ComputerUseSettings";
 import { MigrationSettings } from "./MigrationSettings";
 import { StorageSettings } from "./StorageSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
@@ -102,6 +104,11 @@ const VOICE_INPUT_TAB: TabItem = {
   label: "语音输入",
   icon: <Mic size={16} />,
 };
+const COMPUTER_USE_TAB: TabItem = {
+  id: "computer-use",
+  label: "Computer Use",
+  icon: <Monitor size={16} />,
+};
 /** 尾部 Tabs */
 const TAIL_TABS: TabItem[] = [
   { id: "migration", label: "数据迁移", icon: <HardDriveDownload size={16} /> },
@@ -134,6 +141,8 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
       return <ShortcutSettings />;
     case "voice-input":
       return <VoiceInputSettings />;
+    case "computer-use":
+      return <ComputerUseSettings />;
     case "migration":
       return <MigrationSettings />;
     case "storage":
@@ -250,6 +259,7 @@ export function SettingsPanel({
     return [
       ...BASE_TABS,
       VOICE_INPUT_TAB,
+      COMPUTER_USE_TAB,
       BOTS_TAB,
       SHORTCUTS_TAB,
       ...TAIL_TABS,

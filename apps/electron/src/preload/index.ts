@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, CUA_DRIVER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -70,6 +70,10 @@ import type {
   InstallerDownloadRequest,
   InstallerDownloadResult,
   InstallerProgressPayload,
+  CuaDriverUpdateStatus,
+  CuaDriverUpdateResult,
+  CuaDriverUpdateCheck,
+  CuaDriverInfo,
   ProxyConfig,
   SystemProxyDetectResult,
   GitHubRelease,
@@ -538,6 +542,19 @@ export interface ElectronAPI {
   onInstallerProgress: (
     callback: (payload: InstallerProgressPayload) => void,
   ) => () => void
+
+  // ===== Cua Driver 自动更新相关 =====
+
+  /** 检查并按需更新 Cua Driver */
+  checkAndUpdateCuaDriver: () => Promise<CuaDriverUpdateResult>
+  /** 仅检查更新，不安装 */
+  checkCuaDriverUpdate: () => Promise<CuaDriverUpdateCheck>
+  /** 获取本地 Cua Driver 安装信息（版本/路径/是否已装） */
+  getCuaDriverInfo: () => Promise<CuaDriverInfo>
+  /** 获取当前 Cua Driver 更新状态 */
+  getCuaDriverStatus: () => Promise<CuaDriverUpdateStatus>
+  /** 订阅状态变更 */
+  onCuaDriverStatusChanged: (callback: (status: CuaDriverUpdateStatus) => void) => () => void
 
   // ===== 代理配置相关 =====
 
@@ -1826,6 +1843,17 @@ const electronAPI: ElectronAPI = {
     const listener = (_: unknown, payload: InstallerProgressPayload) => callback(payload)
     ipcRenderer.on(INSTALLER_IPC_CHANNELS.PROGRESS, listener)
     return () => ipcRenderer.off(INSTALLER_IPC_CHANNELS.PROGRESS, listener)
+  },
+
+  // Cua Driver 自动更新
+  checkAndUpdateCuaDriver: () => ipcRenderer.invoke(CUA_DRIVER_IPC_CHANNELS.CHECK_AND_UPDATE),
+  checkCuaDriverUpdate: () => ipcRenderer.invoke(CUA_DRIVER_IPC_CHANNELS.CHECK),
+  getCuaDriverStatus: () => ipcRenderer.invoke(CUA_DRIVER_IPC_CHANNELS.GET_STATUS),
+  getCuaDriverInfo: () => ipcRenderer.invoke(CUA_DRIVER_IPC_CHANNELS.GET_INFO),
+  onCuaDriverStatusChanged: (callback: (status: CuaDriverUpdateStatus) => void) => {
+    const listener = (_: unknown, status: CuaDriverUpdateStatus) => callback(status)
+    ipcRenderer.on(CUA_DRIVER_IPC_CHANNELS.ON_STATUS_CHANGED, listener)
+    return () => ipcRenderer.off(CUA_DRIVER_IPC_CHANNELS.ON_STATUS_CHANGED, listener)
   },
 
   // 代理配置
