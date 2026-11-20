@@ -10,6 +10,13 @@ on:
   push:
     tags:
       - 'v*'
+  # 允许从 Actions 页面或 API 手动触发（用于补跑 / 只构建指定 tag）
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建的 tag（如 v0.19.59）'
+        required: true
+        default: 'v0.19.59'
 
 permissions:
   contents: write
@@ -22,6 +29,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # 手动触发时检出指定 tag，保证发布到对应 Release
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: 安装 Bun
         uses: oven-sh/setup-bun@v2
