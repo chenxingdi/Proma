@@ -21,13 +21,12 @@ import { EnvironmentCheckCard } from '@/components/environment/EnvironmentCheckC
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { ReleaseNotesViewer } from './ReleaseNotesViewer'
+import { GITHUB_RELEASES_URL } from '@proma/shared'
 import { VersionHistory } from './VersionHistory'
 
 /** 从 package.json 构建时由 Vite define 注入 */
 declare const __APP_VERSION__: string
 const APP_VERSION = __APP_VERSION__
-
-const GITHUB_RELEASES_URL = 'https://github.com/proma-ai/Proma/releases'
 
 /** 更新状态卡片 */
 function UpdateCard(): React.ReactElement | null {

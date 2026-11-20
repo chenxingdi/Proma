@@ -4,6 +4,7 @@
  * 从 GitHub API 获取项目的发布日志（Release Notes）
  */
 
+import { UPDATE_REPO_NAME, UPDATE_REPO_OWNER } from '@proma/shared'
 import type {
   GitHubRelease,
   GitHubReleaseListOptions,
@@ -12,10 +13,10 @@ import type {
 /** GitHub API 基础 URL */
 const GITHUB_API_BASE = 'https://api.github.com'
 
-/** GitHub 仓库配置（从 electron-builder.yml） */
+/** GitHub 仓库配置（与 electron-builder.yml 的 publish 保持一致） */
 const GITHUB_REPO = {
-  owner: 'ErlichLiu',
-  repo: 'Proma',
+  owner: UPDATE_REPO_OWNER,
+  repo: UPDATE_REPO_NAME,
 }
 
 /** Release 缓存 */
