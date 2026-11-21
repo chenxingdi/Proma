@@ -60,6 +60,9 @@ export * from './wechat'
 
 // 定时任务（Automation）相关类型
 export * from './automation'
+
+// Bot 身份相关类型
+export * from './bot'
 // 本地任务与日程（Planning）相关类型
 export * from './planning'
 

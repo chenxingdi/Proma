@@ -857,6 +857,15 @@ export function getAutomationsPath(): string {
   return join(getConfigDir(), 'automations.json')
 }
 
+/**
+ * 获取 Bot 身份注册表路径
+ *
+ * @returns ~/.proma/bots.json
+ */
+export function getBotsPath(): string {
+  return join(getConfigDir(), 'bots.json')
+}
+
 /** 获取任务/日程 SQLite 数据库路径。 */
 export function getPlanningDatabasePath(): string {
   return join(getConfigDir(), 'planning.db')
