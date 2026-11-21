@@ -80,4 +80,6 @@ export const BOT_IPC_CHANNELS = {
   UPDATE: 'bot:update',
   /** 删除 Bot */
   DELETE: 'bot:delete',
+  /** 确保 Bot 拥有专属 Agent 会话（幂等），返回 sessionId */
+  ENSURE_SESSION: 'bot:ensure-session',
 } as const

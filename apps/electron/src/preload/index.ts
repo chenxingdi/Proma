@@ -1341,6 +1341,7 @@ export interface ElectronAPI {
   createBot: (input: CreateBotInput) => Promise<BotIdentity>
   updateBot: (input: UpdateBotIpcInput) => Promise<BotIdentity | null>
   deleteBot: (id: string) => Promise<boolean>
+  ensureBotSession: (id: string) => Promise<string>
 
   // ===== 任务 / 日程（Planning）=====
   listTodos: (query?: TodoListQuery) => Promise<Todo[]>
@@ -3068,6 +3069,7 @@ const electronAPI: ElectronAPI = {
   createBot: (input: CreateBotInput) => ipcRenderer.invoke(BOT_IPC_CHANNELS.CREATE, input),
   updateBot: (input: UpdateBotIpcInput) => ipcRenderer.invoke(BOT_IPC_CHANNELS.UPDATE, input),
   deleteBot: (id: string) => ipcRenderer.invoke(BOT_IPC_CHANNELS.DELETE, id),
+  ensureBotSession: (id: string) => ipcRenderer.invoke(BOT_IPC_CHANNELS.ENSURE_SESSION, id),
   runAutomationNow: (id: string) =>
     ipcRenderer.invoke(AUTOMATION_IPC_CHANNELS.RUN_NOW, id),
   onAutomationChanged: (callback: () => void) => {

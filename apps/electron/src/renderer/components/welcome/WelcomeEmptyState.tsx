@@ -26,7 +26,8 @@ function getGreeting(hour: number): string {
 
 /** 模式配置 */
 const MODE_CONFIG: Record<AppMode, { icon: React.ReactNode; label: string }> = {
-  chat: { icon: <MessageSquare size={15} />, label: 'Chat' },
+  // chat 槽位由 Bot 工作台接管。
+  chat: { icon: <MessageSquare size={15} />, label: 'Bot' },
   agent: { icon: <Bot size={15} />, label: 'Agent' },
 }
 

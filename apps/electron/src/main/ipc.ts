@@ -251,6 +251,7 @@ import {
 } from './lib/automation-manager'
 import { runAutomationNow, broadcastChanged as broadcastAutomationsChanged } from './lib/automation-scheduler'
 import { createBotManager } from './lib/bot-manager'
+import { createDefaultBotSessionService } from './lib/bot-session-service-default'
 import {
   listTodos,
   getTodo,
@@ -6143,6 +6144,15 @@ export function registerIpcHandlers(): void {
     async (_, id: string): Promise<boolean> => {
       if (!isNonEmptyString(id)) throw new Error('id 必填')
       return createBotManager().deleteBot(id)
+    }
+  )
+
+  ipcMain.handle(
+    BOT_IPC_CHANNELS.ENSURE_SESSION,
+    async (_, id: string): Promise<string> => {
+      if (!isNonEmptyString(id)) throw new Error('id 必填')
+      const session = createDefaultBotSessionService().ensureBotSession(id)
+      return session.id
     }
   )
 
