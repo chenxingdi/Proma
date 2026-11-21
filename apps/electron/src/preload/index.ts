@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, CUA_DRIVER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, CUA_DRIVER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, BOT_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -136,6 +136,9 @@ import type {
   Automation,
   CreateAutomationInput,
   UpdateAutomationInput,
+  BotIdentity,
+  CreateBotInput,
+  UpdateBotIpcInput,
   Todo,
   TodoListQuery,
   CalendarEvent,
@@ -1332,6 +1335,12 @@ export interface ElectronAPI {
   runAutomationNow: (id: string) => Promise<void>
   /** 订阅任务列表变更事件 */
   onAutomationChanged: (callback: () => void) => () => void
+
+  // ===== Bot 身份管理 =====
+  listBots: () => Promise<BotIdentity[]>
+  createBot: (input: CreateBotInput) => Promise<BotIdentity>
+  updateBot: (input: UpdateBotIpcInput) => Promise<BotIdentity | null>
+  deleteBot: (id: string) => Promise<boolean>
 
   // ===== 任务 / 日程（Planning）=====
   listTodos: (query?: TodoListQuery) => Promise<Todo[]>
@@ -3053,6 +3062,12 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke(AUTOMATION_IPC_CHANNELS.DELETE, id),
   toggleAutomation: (id: string, active: boolean) =>
     ipcRenderer.invoke(AUTOMATION_IPC_CHANNELS.TOGGLE, id, active),
+
+  // ===== Bot 身份管理 =====
+  listBots: () => ipcRenderer.invoke(BOT_IPC_CHANNELS.LIST),
+  createBot: (input: CreateBotInput) => ipcRenderer.invoke(BOT_IPC_CHANNELS.CREATE, input),
+  updateBot: (input: UpdateBotIpcInput) => ipcRenderer.invoke(BOT_IPC_CHANNELS.UPDATE, input),
+  deleteBot: (id: string) => ipcRenderer.invoke(BOT_IPC_CHANNELS.DELETE, id),
   runAutomationNow: (id: string) =>
     ipcRenderer.invoke(AUTOMATION_IPC_CHANNELS.RUN_NOW, id),
   onAutomationChanged: (callback: () => void) => {
