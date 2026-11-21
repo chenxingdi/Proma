@@ -11,7 +11,6 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { LeftSidebar } from './LeftSidebar'
 import { RightSidePanel } from './RightSidePanel'
 import { MainArea } from '@/components/tabs/MainArea'
-import { BotWorkspace } from '@/components/bot-workspace/BotWorkspace'
 import { appModeAtom } from '@/atoms/app-mode'
 import { agentDiffPanelTabAtom, agentSessionComponentOpenMapAtom, agentSessionsAtom, agentSidePanelLayoutAtomFamily, agentSidePanelLayoutMapAtom, agentSidePanelSplitMapAtom, currentAgentSessionIdAtom, currentSessionSidePanelOpenAtom, isWorkspaceComponentTab, pruneAgentSidePanelLayouts, fileBrowserExpandedPathsAtom, fileBrowserScrollTopMapAtom, pruneFileBrowserStateMap } from '@/atoms/agent-atoms'
 import { leftSidebarWidthAtom } from '@/atoms/sidebar-atoms'
@@ -123,7 +122,7 @@ export function AppShell(): React.ReactElement {
       return changed ? next : previous
     })
   }, [activeView, productivityTools.calendarEnabled, productivityTools.obsidianEnabled, productivityTools.todosEnabled, setActiveView, setAgentDiffPanelTabs, setAgentSessionComponentOpenMap])
-  const showRightPanel = appMode === 'agent' && !!currentSessionId && !(automationForm.open && activeView !== 'conversations') && activeView !== 'planning' && activeView !== 'agent-skills' && activeView !== 'bots'
+  const showRightPanel = appMode === 'agent' && !!currentSessionId && !(automationForm.open && activeView !== 'conversations') && activeView !== 'planning' && activeView !== 'agent-skills'
   const isWindows = React.useMemo(() => detectIsWindows(), [])
 
   // 左侧边栏可拖拽宽度
@@ -355,25 +354,6 @@ export function AppShell(): React.ReactElement {
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
   }, [activeRightPanelSplit, canAutoCollapseSidebarForRightPanel, clampedLeftSidebarWidth, currentSessionId, displayedRightPanelWidth, isExpandedRightWorkspace, leftSidebarOccupiedWidth, rightPanelLayout.hasOpenedWideWorkspace, rightPanelMinimumWidth, setRightPanelLayout, setSidebarCollapsed, sidebarCollapsed, usesWidePanelLayout, viewportWidth])
-
-  // Bot 模式接管原 chat 槽位：整块内容区替换为 Bot 三栏工作台，
-  // 不再渲染 Agent 模式的左/中/右布局。
-  if (appMode === 'chat') {
-    return (
-      <>
-        <WindowControls />
-        <div className={cn('flex h-screen w-screen overflow-hidden bg-content-area', getWindowTitlebarContentInsetClass(isWindows))}>
-          <div className="min-w-0 flex-1"><BotWorkspace /></div>
-        </div>
-        <Toaster position="top-right" offset={{ top: 58, right: 12 }} className="agent-history-toaster" />
-        {settingsOpen && (
-          <div className="absolute inset-0 z-[60]">
-            <SettingsPanel onClose={() => setSettingsOpen(false)} />
-          </div>
-        )}
-      </>
-    )
-  }
 
   return (
     <>

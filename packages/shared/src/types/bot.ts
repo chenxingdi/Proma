@@ -64,22 +64,3 @@ export interface UpdateBotInput {
   sessionId?: string
   imBinding?: BotImBinding
 }
-
-/** IPC 更新 Bot 的输入，带 id */
-export interface UpdateBotIpcInput extends UpdateBotInput {
-  id: string
-}
-
-/** Bot 相关 IPC 通道常量 */
-export const BOT_IPC_CHANNELS = {
-  /** 获取全部 Bot */
-  LIST: 'bot:list',
-  /** 创建 Bot */
-  CREATE: 'bot:create',
-  /** 更新 Bot */
-  UPDATE: 'bot:update',
-  /** 删除 Bot */
-  DELETE: 'bot:delete',
-  /** 确保 Bot 拥有专属 Agent 会话（幂等），返回 sessionId */
-  ENSURE_SESSION: 'bot:ensure-session',
-} as const

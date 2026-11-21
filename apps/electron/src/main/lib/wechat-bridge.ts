@@ -30,9 +30,6 @@ import QRCode from 'qrcode'
 import { redactSensitiveLogText, redactSensitiveLogValue } from './bridge-log-redaction'
 import { assertWeChatSendSucceeded } from './wechat-api-utils'
 import { appendWeChatAgentSourceMarker } from './wechat-agent-input'
-import { createBotManager } from './bot-manager'
-import { createBotImRouter } from './bot-im-router'
-import { createDefaultBotSessionService } from './bot-session-service-default'
 
 // ===== iLink API 常量 =====
 
@@ -419,15 +416,6 @@ class WeChatBridge {
       },
     },
     getDefaultWorkspaceId: () => getWeChatConfig().defaultWorkspaceId,
-    resolveBotSession: (chatId) => {
-      const botManager = createBotManager()
-      const sessionService = createDefaultBotSessionService()
-      const router = createBotImRouter({
-        bots: botManager,
-        ensureSession: (bot) => sessionService.ensureBotSession(bot.id),
-      })
-      return router.resolve('wechat', chatId)
-    },
     bindingStore: createJsonBridgeChatBindingStore(getWeChatBindingsPath(), '微信 Bridge'),
     transformAgentInput: appendWeChatAgentSourceMarker,
     onWorkspaceSwitched: (workspaceId) => updateWeChatDefaultWorkspace(workspaceId),

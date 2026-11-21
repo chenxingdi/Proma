@@ -15,13 +15,12 @@ import { conversationsAtom, currentConversationIdAtom } from '@/atoms/chat-atoms
 import { agentSessionsAtom, currentAgentSessionIdAtom } from '@/atoms/agent-atoms'
 import { tabsAtom } from '@/atoms/tab-atoms'
 import { useOpenSession } from '@/hooks/useOpenSession'
-import { Bot, Sparkles } from 'lucide-react'
+import { Bot, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const modes: { value: AppMode; label: string; icon: React.ReactNode }[] = [
   { value: 'agent', label: 'Agent', icon: <Bot size={15} /> },
-  // chat 槽位现在承载 Bot 工作台，界面上显示为 Bot。
-  { value: 'chat', label: 'Bot', icon: <Sparkles size={15} /> },
+  { value: 'chat', label: 'Chat', icon: <MessageSquare size={15} /> },
 ]
 
 export function ModeSwitcher(): React.ReactElement {
