@@ -2,7 +2,7 @@
  * ToolSelectorPopover - 工具选择器弹出层
  *
  * 在 ChatInput footer 中显示工具开关列表。
- * 用户可以快速启用/禁用 Agent 模式推荐及自定义工具。
+ * 用户可以快速启用/禁用联网工具、Agent 模式推荐及自定义工具。
  * 类似 ContextSettingsPopover 的交互方式。
  */
 
@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Wrench, Brain, Globe, ImagePlus } from 'lucide-react'
+import { Wrench, Brain, Globe, ImagePlus, Sparkles, FileText } from 'lucide-react'
 import { chatToolsAtom, hasActiveToolsAtom } from '@/atoms/chat-tool-atoms'
 import { inputToolbarActiveButtonClass, inputToolbarButtonClass } from '@/components/ai-elements/input-toolbar-styles'
 
@@ -34,6 +34,10 @@ function getToolIcon(iconName?: string): React.ReactElement {
       return <Globe className="size-4" />
     case 'ImagePlus':
       return <ImagePlus className="size-4" />
+    case 'Sparkles':
+      return <Sparkles className="size-4" />
+    case 'FileText':
+      return <FileText className="size-4" />
     default:
       return <Wrench className="size-4" />
   }
