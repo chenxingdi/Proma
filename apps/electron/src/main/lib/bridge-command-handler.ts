@@ -64,6 +64,11 @@ export interface BridgeCommandHandlerConfig {
   bindingStore?: BridgeChatBindingStore
   /** 仅改变传给 Agent 的文本；会话中仍保存未经处理的原始消息。 */
   transformAgentInput?: (message: string) => string
+  /**
+   * 可选：按 IM 身份解析 Bot 专属会话。
+   * 命中时优先于通用 chatId → sessionId 路由；未命中返回 null 保持原行为。
+   */
+  resolveBotSession?: (chatId: string) => BridgeChatBinding | null
 }
 
 /** 通用聊天绑定 */
@@ -129,6 +134,15 @@ export class BridgeCommandHandler {
   ensureBinding(chatId: string): BridgeChatBinding | null {
     const existing = this.getValidBinding(chatId)
     if (existing) return existing
+
+    const botBinding = this.config.resolveBotSession?.(chatId) ?? null
+    if (botBinding) {
+      this.chatBindings.set(chatId, botBinding)
+      this.sessionToChat.set(botBinding.sessionId, chatId)
+      this.saveBindings()
+      this.log(`chatId 绑定 Bot 会话: ${botBinding.sessionId.slice(0, 8)}`)
+      return botBinding
+    }
 
     const settings = getSettings()
     const channelId = settings.agentChannelId
