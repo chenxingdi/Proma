@@ -22,6 +22,7 @@ import { AutomationFormView } from '@/components/automation/AutomationFormView'
 import { PlanningView } from '@/components/planning/PlanningView'
 import { AgentSkillsView } from '@/components/agent-skills/AgentSkillsView'
 import { VaultView } from '@/components/vault/VaultView'
+import { BotsView } from '@/components/bots/BotsView'
 import { automationFormAtom } from '@/atoms/automation-atoms'
 import { activeViewAtom } from '@/atoms/active-view'
 import { registerShortcut } from '@/lib/shortcut-registry'
@@ -154,6 +155,8 @@ export function MainArea(): React.ReactElement {
             automationFormOpen ? <AutomationFormView /> : <PlanningView />
           ) : activeView === 'agent-skills' ? (
             <AgentSkillsView />
+          ) : activeView === 'bots' ? (
+            <BotsView />
           ) : activeView === 'vault' ? (
             <VaultView />
           ) : (

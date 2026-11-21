@@ -3584,6 +3584,14 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
             badge={(capabilities?.skills.filter((skill) => skill.hasUpdate).length ?? 0) > 0 ? <span className="size-2.5 rounded-full bg-blue-500" /> : undefined}
           />
         )}
+        {mode === 'agent' && (
+          <WorkspaceComponentSidebarEntry
+            label="Bot 管理"
+            icon={<Bot size={16} />}
+            active={activeView === 'bots'}
+            onClick={() => setActiveView('bots')}
+          />
+        )}
       </div>
 
       {/* 原生与虚拟列表共享顶部反馈，切换视图时不沿用上一列表的滚动状态。 */}
