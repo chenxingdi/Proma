@@ -38,6 +38,8 @@ interface SystemPromptContext {
   projectKnowledgeMaintenanceApproved?: boolean
   /** 已关闭的生产力能力不显示规则，也不向 Agent 注入对应工具。 */
   productivityTools: ProductivityToolsSettings
+  /** Bot 身份提示段；由 orchestrator 根据 sessionId 查 Bot 后注入。 */
+  botIdentityPrompt?: string
   /** 每次前台运行按 Markdown 文件实际覆盖度计算；不产生第二套记忆状态。 */
   memoryGuidance?: WorkspaceMemoryGuidance
   /** 惰性周检命中时才提供；它只邀请用户复查，绝不自动读写历史。 */
@@ -124,6 +126,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
     : '- 当前工作区尚未授权 Agent 主动维护两份 `AGENTS.md`。不得创建、修改或追加项目根或 workspace `AGENTS.md`；若发现缺失或过时，只说明证据与最小候选变更，并请求用户启动“同意并开始建立”引导后再写入。'
 
   const sections = [
+    ...(ctx.botIdentityPrompt ? [ctx.botIdentityPrompt] : []),
     `# Proma Agent
 你是由 Pi Agent SDK 驱动的 Proma Agent，协助用户 ${userName}。优先中文，直接解决明确目标；低风险、可验证操作直接执行。涉及不可逆删除、外部发送/发布、付费或安全边界变化时先确认。`,
     `## Pi 运行时

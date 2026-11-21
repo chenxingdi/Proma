@@ -58,6 +58,8 @@ import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, g
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
 import { buildSystemPrompt, buildDynamicContext } from './agent-prompt-builder'
+import { createBotManager } from './bot-manager'
+import { buildBotIdentityPrompt } from './bot-prompt-service'
 import { resolveProjectInstructions } from './project-instruction-resolver'
 import { combinePromaInstructionFiles } from './adapters/pi-resource-loader-overrides'
 import { MAX_CONTEXT_MESSAGES, buildContextPrompt, buildRecoveryPrompt, buildReferencedSessionsPrompt } from './agent-session-context-prompt'
@@ -1535,11 +1537,13 @@ export class AgentOrchestrator {
       const memoryRefreshOpportunity = workspaceSlug && !automationContext && !input.triggeredBy && !memoryGuidance?.needsCollaborationProfile
         ? claimWorkspaceMemoryRefreshOpportunity(workspaceSlug)
         : undefined
+      const boundBot = createBotManager().findBotBySessionId(sessionId)
       const systemPromptAppend = buildSystemPrompt({
         workspaceName: workspace?.name,
         workspaceSlug,
         sessionId,
         agentCwd,
+        botIdentityPrompt: boundBot ? buildBotIdentityPrompt(boundBot) : undefined,
         sessionWorkbenchLayout: getSessionWorkbenchLayout(sessionMeta),
         permissionMode: initialPermissionMode,
         collaborationAvailable,
