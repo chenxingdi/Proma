@@ -17,8 +17,6 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { ModeSwitcher } from './ModeSwitcher'
 import { SearchDialog } from './SearchDialog'
 import { UserAvatar } from '@/components/chat/UserAvatar'
-import { BotConfigDialog } from '@/components/chat/BotConfigDialog'
-import { conversationBotMapAtom } from '@/atoms/bot-atoms'
 import { activeViewAtom, agentSkillsTabAtom } from '@/atoms/active-view'
 import { automationFormAtom, automationsAtom } from '@/atoms/automation-atoms'
 import { planningTabAtom } from '@/atoms/planning-atoms'
@@ -172,7 +170,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { ConversationMeta, AgentSessionMeta, AgentWorkspace, WorkspaceCapabilities, BotIdentity, CreatedBotWithConversation } from '@proma/shared'
+import type { ConversationMeta, AgentSessionMeta, AgentWorkspace, WorkspaceCapabilities } from '@proma/shared'
 
 function formatAutomationCount(count: number): string {
   return count > 99 ? '99+' : String(count)
@@ -620,13 +618,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   const setDraftSessionIds = useSetAtom(draftSessionIdsAtom)
   const setAgentMessagesCache = useSetAtom(agentSDKMessagesCacheAtom)
 
-  /** conversationId → Bot 映射（renderer 唯一状态源） */
-  const [conversationBotMap, setConversationBotMap] = useAtom(conversationBotMapAtom)
-  /** 待配置 Bot 的对话 ID，非空时显示配置面板 */
-  const [botConfigConversationId, setBotConfigConversationId] = React.useState<string | null>(null)
-  /** 新建 Bot 弹窗开关；保存成功前不创建任何会话 */
-  const [botCreateDialogOpen, setBotCreateDialogOpen] = React.useState(false)
-
   /** 待删除对话 ID，非空时显示确认弹窗 */
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null)
   /** 待删除项目 ID，非空时显示项目删除确认弹窗 */
@@ -1070,48 +1061,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   React.useEffect(() => {
     setViewMode('active')
   }, [mode, setViewMode])
-
-  // 首次挂载时加载 Bot 列表，建立 conversationId → Bot 映射
-  React.useEffect(() => {
-    let cancelled = false
-    window.electronAPI.listBots()
-      .then((bots) => {
-        if (cancelled) return
-        const map: Record<string, BotIdentity> = {}
-        for (const bot of bots) {
-          if (bot.conversationId) map[bot.conversationId] = bot
-        }
-        setConversationBotMap(map)
-      })
-      .catch((error) => console.error('[侧边栏] 加载 Bot 列表失败:', error))
-    return () => { cancelled = true }
-  }, [setConversationBotMap])
-
-  /** 打开会话 Bot 配置面板 */
-  const handleConfigureBot = React.useCallback((id: string): void => {
-    setBotConfigConversationId(id)
-  }, [])
-
-  /** Bot 保存/删除后更新映射 */
-  const handleBotSaved = React.useCallback((bot: BotIdentity | null): void => {
-    const conversationId = botConfigConversationId
-    if (!conversationId) return
-    setConversationBotMap((prev) => {
-      const next = { ...prev }
-      if (bot) next[conversationId] = bot
-      else delete next[conversationId]
-      return next
-    })
-  }, [botConfigConversationId, setConversationBotMap])
-
-  /** 新建 Bot 成功后：加入会话列表、写入 Bot 映射、打开新会话并关闭弹窗 */
-  const handleBotCreated = React.useCallback((result: CreatedBotWithConversation): void => {
-    setConversations((prev) => [result.conversation, ...prev])
-    setConversationBotMap((prev) => ({ ...prev, [result.conversation.id]: result.bot }))
-    openSession('chat', result.conversation.id, result.conversation.title)
-    setActiveView('conversations')
-    setBotCreateDialogOpen(false)
-  }, [setConversations, setConversationBotMap, openSession, setActiveView])
 
   /** 选择对话（打开或聚焦标签页） */
   const handleSelectConversation = React.useCallback((id: string, title: string): void => {
@@ -2444,30 +2393,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     handleSelectAgentSession(session.id, session.title)
   }, [handleSelectAgentSession])
 
-  // 会话 Bot 配置面板（collapsed/expanded 共享）
-  const botConfigInitialBot = botConfigConversationId
-    ? conversationBotMap[botConfigConversationId]
-    : undefined
-  const botConfigDialog = (
-    <BotConfigDialog
-      open={botConfigConversationId !== null}
-      onOpenChange={(open) => { if (!open) setBotConfigConversationId(null) }}
-      conversationId={botConfigConversationId ?? ''}
-      initialBot={botConfigInitialBot}
-      onSaved={handleBotSaved}
-    />
-  )
-
-  // 新建 Bot 弹窗（collapsed/expanded 共享），与编辑弹窗并存
-  const botCreateDialog = (
-    <BotConfigDialog
-      open={botCreateDialogOpen}
-      onOpenChange={setBotCreateDialogOpen}
-      conversationId={undefined}
-      onCreated={handleBotCreated}
-    />
-  )
-
   // 删除确认弹窗（collapsed/expanded 共享）
   const deleteDialog = (
     <AlertDialog
@@ -2631,7 +2556,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
                   onRename={handleRename}
                   onTogglePin={handleTogglePin}
                   onToggleArchive={handleToggleArchive}
-                  onConfigureBot={handleConfigureBot}
                 />
               </div>
             </div>
@@ -2688,7 +2612,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
                 onRename={handleRename}
                 onTogglePin={handleTogglePin}
                 onToggleArchive={handleToggleArchive}
-                onConfigureBot={handleConfigureBot}
               />
             </div>
           ),
@@ -2696,7 +2619,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       }
     }
     return rows
-  }, [activeSessionId, conversationGroups, createChat, handleConfigureBot, handleRename, handleRequestDelete, handleSelectConversation, handleToggleArchive, handleTogglePin, newChatShortcutLabel, pinnedConversations, relativeTimeNow, streamingIds])
+  }, [activeSessionId, conversationGroups, createChat, handleRename, handleRequestDelete, handleSelectConversation, handleToggleArchive, handleTogglePin, newChatShortcutLabel, pinnedConversations, relativeTimeNow, streamingIds])
 
   const chatArchivedVirtualRows = React.useMemo<VirtualSidebarRow[]>(() => {
     const rows: VirtualSidebarRow[] = []
@@ -2723,7 +2646,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
                 onRename={handleRename}
                 onTogglePin={handleTogglePin}
                 onToggleArchive={handleToggleArchive}
-                onConfigureBot={handleConfigureBot}
               />
             </div>
           ),
@@ -2731,7 +2653,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       }
     }
     return rows
-  }, [activeSessionId, conversationGroups, handleConfigureBot, handleRename, handleRequestDelete, handleSelectConversation, handleToggleArchive, handleTogglePin, relativeTimeNow, streamingIds])
+  }, [activeSessionId, conversationGroups, handleRename, handleRequestDelete, handleSelectConversation, handleToggleArchive, handleTogglePin, relativeTimeNow, streamingIds])
 
   const agentArchivedVirtualRows = React.useMemo<VirtualSidebarRow[]>(() => {
     const rows: VirtualSidebarRow[] = []
@@ -3494,8 +3416,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
         {projectDeleteDialog}
         {restoreProjectRootDialog}
         {moveDialog}
-        {botConfigDialog}
-        {botCreateDialog}
         <SearchDialog />
       </div>
     );
@@ -3578,24 +3498,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
             </span>
           </TooltipContent>
         </Tooltip>
-        {mode === 'chat' && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="新建 Bot"
-                onClick={() => setBotCreateDialogOpen(true)}
-                className="group flex h-9 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 text-[13px] text-[hsl(var(--sidebar-primary-foreground))] transition-[background-color,color,transform] hover:bg-foreground/[0.055] hover:text-[hsl(var(--sidebar-primary-foreground))] active:scale-[0.96] titlebar-no-drag"
-              >
-                <Bot size={16} className="shrink-0" />
-                <span>新建 Bot</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <span>新建 Bot</span>
-            </TooltipContent>
-          </Tooltip>
-        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -3811,8 +3713,6 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       {projectDeleteDialog}
       {restoreProjectRootDialog}
       {moveDialog}
-      {botConfigDialog}
-      {botCreateDialog}
       <SearchDialog />
     </div>
   )
@@ -4047,7 +3947,6 @@ interface ConversationItemProps {
   onRename: (id: string, newTitle: string) => Promise<void>
   onTogglePin: (id: string) => Promise<void>
   onToggleArchive: (id: string) => Promise<void>
-  onConfigureBot: (id: string) => void
 }
 
 const ConversationItem = React.memo(function ConversationItem({
@@ -4061,10 +3960,7 @@ const ConversationItem = React.memo(function ConversationItem({
   onRename,
   onTogglePin,
   onToggleArchive,
-  onConfigureBot,
 }: ConversationItemProps): React.ReactElement {
-  const conversationBotMap = useAtomValue(conversationBotMapAtom)
-  const hasBot = !!conversationBotMap[conversation.id]
   const sessionHoverPreviewEnabled = useAtomValue(sessionHoverPreviewEnabledAtom)
   const [editing, setEditing] = React.useState(false)
   const [editTitle, setEditTitle] = React.useState('')
@@ -4124,10 +4020,6 @@ const ConversationItem = React.memo(function ConversationItem({
       <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => startEdit()}>
         <Pencil size={14} />
         重命名
-      </MenuItem>
-      <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onConfigureBot(conversation.id)}>
-        <Bot size={14} />
-        {hasBot ? '编辑 Bot' : '转为 Bot'}
       </MenuItem>
       <MenuItem className="text-xs py-1 [&>svg]:size-3.5" onSelect={() => onToggleArchive(conversation.id)}>
         {conversation.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
@@ -4193,9 +4085,6 @@ const ConversationItem = React.memo(function ConversationItem({
                 {/* 置顶标记 */}
                 {showPinIcon && (
                   <Pin size={11} className="flex-shrink-0 text-primary/60" />
-                )}
-                {hasBot && (
-                  <Bot size={11} className="flex-shrink-0 text-primary/70" />
                 )}
                 <span className="truncate">{conversation.title}</span>
               </div>

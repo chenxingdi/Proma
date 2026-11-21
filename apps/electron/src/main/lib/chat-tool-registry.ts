@@ -141,20 +141,6 @@ export function getEnabledTools(enabledToolIds?: string[]): EnabledToolsResult {
 }
 
 /**
- * 获取注册表中所有工具的 id（内置 + 自定义）。
- *
- * 不检查凭据或开关：工具可用性由 getEnabledTools 在拿到显式 id 列表时
- * 再做凭据过滤，这里只负责把「全部工具」的 id 交给调用方。
- */
-export function getAllToolIds(): string[] {
-  const config = getChatToolsConfig()
-  return [
-    ...BUILTIN_TOOLS.map((entry) => entry.meta.id),
-    ...config.customTools.map((meta) => meta.id),
-  ]
-}
-
-/**
  * 获取所有工具信息（供前端展示）
  *
  * 返回所有内置 + 自定义工具的元数据、开关状态和可用性。

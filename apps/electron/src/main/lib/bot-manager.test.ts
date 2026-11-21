@@ -91,40 +91,6 @@ describe('bot-manager', () => {
     expect(manager.findBotBySessionId('other-session')).toBeUndefined()
   })
 
-  test('Given 两个绑定不同 conversationId 的 Bot When findBotByConversationId Then 精确命中，其他 id 未命中', () => {
-    const manager = makeManager()
-    const chatBot = manager.createBot({ name: '会话 Bot', conversationId: 'chat-abc' })
-    manager.createBot({ name: '另一个 Bot', conversationId: 'chat-def' })
-    manager.createBot({ name: '未绑定 Bot' })
-
-    expect(chatBot.conversationId).toBe('chat-abc')
-    expect(manager.findBotByConversationId('chat-abc')?.id).toBe(chatBot.id)
-    expect(manager.findBotByConversationId('chat-def')?.name).toBe('另一个 Bot')
-    expect(manager.findBotByConversationId('chat-missing')).toBeUndefined()
-  })
-
-  test('Given 会话 Bot 与 Agent 会话 Bot When findBotByConversationId Then 不与 sessionId 混淆', () => {
-    const manager = makeManager()
-    const bot = manager.createBot({ name: '混合 Bot', conversationId: 'chat-1' })
-    manager.updateBot(bot.id, { sessionId: 'agent-session-1' })
-
-    expect(manager.findBotByConversationId('chat-1')?.id).toBe(bot.id)
-    expect(manager.findBotByConversationId('agent-session-1')).toBeUndefined()
-  })
-
-  test('Given 绑定 conversationId 的 Bot When REMOVE 路径 deleteBot Then 只移除目标且查找不再命中', () => {
-    const manager = makeManager()
-    const target = manager.createBot({ name: '目标 Bot', conversationId: 'chat-remove' })
-    manager.createBot({ name: '保留 Bot', conversationId: 'chat-keep' })
-
-    const found = manager.findBotByConversationId('chat-remove')
-    expect(found?.id).toBe(target.id)
-    expect(manager.deleteBot(found!.id)).toBe(true)
-    expect(manager.findBotByConversationId('chat-remove')).toBeUndefined()
-    expect(manager.findBotByConversationId('chat-keep')?.name).toBe('保留 Bot')
-    expect(manager.listBots().map((item) => item.name)).toEqual(['保留 Bot'])
-  })
-
   test('Given 损坏的 bots.json When 读取 Then 视为空并且不抛错', () => {
     if (!tempDir) tempDir = mkdtempSync(join(tmpdir(), 'proma-bots-'))
     const path = join(tempDir, 'bots.json')

@@ -57,7 +57,6 @@ export function createBotManager(filePath: string = getBotsPath()) {
       ...(input.modelId ? { modelId: input.modelId } : {}),
       ...(input.channelId ? { channelId: input.channelId } : {}),
       ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-      ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       ...(input.imBinding ? { imBinding: input.imBinding } : {}),
     }
     const index = readIndex()
@@ -102,12 +101,7 @@ export function createBotManager(filePath: string = getBotsPath()) {
     return readIndex().bots.find((bot) => bot.sessionId === sessionId)
   }
 
-  /** 按绑定的 Chat 会话 id 查找 Bot（与 Agent sessionId 分属不同 id 空间） */
-  function findBotByConversationId(conversationId: string): BotIdentity | undefined {
-    return readIndex().bots.find((bot) => bot.conversationId === conversationId)
-  }
-
-  return { listBots, getBot, createBot, updateBot, deleteBot, findBotByImBinding, findBotBySessionId, findBotByConversationId }
+  return { listBots, getBot, createBot, updateBot, deleteBot, findBotByImBinding, findBotBySessionId }
 }
 
 function isBotIdentity(value: unknown): value is BotIdentity {

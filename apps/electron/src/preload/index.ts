@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, CUA_DRIVER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, BOT_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, CUA_DRIVER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -91,9 +91,6 @@ import type {
   ChatToolInfo,
   ChatToolState,
   ChatToolMeta,
-  BotIdentity,
-  CreateBotWithConversationInput,
-  CreatedBotWithConversation,
   MoveSessionToWorkspaceInput,
   ForkSessionInput,
   RewindSessionInput,
@@ -888,17 +885,6 @@ export interface ElectronAPI {
 
   /** 监听自定义工具配置变更 */
   onCustomToolChanged: (callback: () => void) => () => void
-
-  // ===== 会话 Bot =====
-
-  /** 列出全部 Bot */
-  listBots: () => Promise<BotIdentity[]>
-  /** 保存会话 Bot：存在则更新，不存在则创建 */
-  saveBotForConversation: (input: { conversationId: string; name: string; role?: string; instructions?: string; channelId?: string; modelId?: string }) => Promise<BotIdentity>
-  /** 按 conversationId 移除会话 Bot */
-  removeBotForConversation: (conversationId: string) => Promise<boolean>
-  /** 原子新建 Bot 与其绑定会话，返回会话与 Bot；取消不会产生空会话 */
-  createBotWithConversation: (input: CreateBotWithConversationInput) => Promise<CreatedBotWithConversation>
 
   // ===== AskUserQuestion 交互式问答 =====
 
@@ -2363,23 +2349,6 @@ const electronAPI: ElectronAPI = {
     const listener = (): void => callback()
     ipcRenderer.on(CHAT_TOOL_IPC_CHANNELS.CUSTOM_TOOL_CHANGED, listener)
     return () => { ipcRenderer.removeListener(CHAT_TOOL_IPC_CHANNELS.CUSTOM_TOOL_CHANGED, listener) }
-  },
-
-  // 会话 Bot
-  listBots: () => {
-    return ipcRenderer.invoke(BOT_IPC_CHANNELS.LIST)
-  },
-
-  saveBotForConversation: (input: { conversationId: string; name: string; role?: string; instructions?: string; channelId?: string; modelId?: string }) => {
-    return ipcRenderer.invoke(BOT_IPC_CHANNELS.SAVE_FOR_CONVERSATION, input)
-  },
-
-  removeBotForConversation: (conversationId: string) => {
-    return ipcRenderer.invoke(BOT_IPC_CHANNELS.REMOVE_FOR_CONVERSATION, conversationId)
-  },
-
-  createBotWithConversation: (input: CreateBotWithConversationInput) => {
-    return ipcRenderer.invoke(BOT_IPC_CHANNELS.CREATE_WITH_CONVERSATION, input)
   },
 
   // AskUserQuestion 交互式问答
