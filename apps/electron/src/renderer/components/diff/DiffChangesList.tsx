@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileTypeIcon } from '@/components/file-browser/FileTypeIcon'
-import { agentDiffUnseenFilesAtom, agentDiffDataAtom, agentNonGitFileChangesAtom, agentSelectedWorktreeAtom, agentSessionsAtom, workspaceGitDiffRefreshVersionAtom } from '@/atoms/agent-atoms'
+import { agentDiffUnseenFilesAtom, agentDiffDataAtom, agentDiffCollapsedGroupsAtom, agentNonGitFileChangesAtom, agentSelectedWorktreeAtom, agentSessionsAtom, setAgentDiffGroupExpandedAtom, workspaceGitDiffRefreshVersionAtom } from '@/atoms/agent-atoms'
 import type { ChangedFileEntry, ChangedFileStatus, ChangeSource, UntrackedFileEntry, WorktreeInfo } from '@proma/shared'
 import { WorktreeSelector } from './WorktreeSelector'
 import { groupSessionFileChanges, arePathsEqual } from '@/lib/session-file-changes'
@@ -20,6 +20,7 @@ import type { SessionFileChange } from '@/lib/session-file-changes'
 import { buildDiffFileTree } from './diff-file-tree'
 import type { DiffFileTreeNode } from './diff-file-tree'
 import { collectDiffChangeSources, DIFF_CHANGE_SOURCE_CONFIG } from './diff-change-sources'
+import { isGroupExpanded, readCollapsedGroupIds } from '@/lib/diff-collapsed-groups'
 
 interface GitFileEntry {
   filePath: string
@@ -77,6 +78,29 @@ interface DiffChangesListProps {
   currentFileChangeRunId?: string
   /** 点击非 Git 文件时打开纯文件预览 */
   onPlainFileClick?: (filePath: string) => void
+}
+
+/** 「本会话文件变更」总分组的持久化 key。 */
+const NON_GIT_ROOT_GROUP_ID = 'non-git:root'
+
+/**
+ * 读取并切换某个分组的折叠态。
+ *
+ * 折叠记录按会话持久化；用户从未操作过时使用 `defaultExpanded`，
+ * 首次点击按当前可见状态播种，不会翻转错方向。
+ */
+function usePersistentGroupExpanded(
+  sessionId: string,
+  groupId: string,
+  defaultExpanded = true,
+): { isExpanded: boolean; toggle: () => void } {
+  const collapsedState = useAtomValue(agentDiffCollapsedGroupsAtom)
+  const setGroupExpanded = useSetAtom(setAgentDiffGroupExpandedAtom)
+  const isExpanded = isGroupExpanded(collapsedState, sessionId, groupId, defaultExpanded)
+  const toggle = React.useCallback(() => {
+    setGroupExpanded({ sessionId, groupId, expanded: !isExpanded })
+  }, [groupId, isExpanded, sessionId, setGroupExpanded])
+  return { isExpanded, toggle }
 }
 
 export const DiffChangesList = React.memo(function DiffChangesList({
@@ -147,7 +171,13 @@ export const DiffChangesList = React.memo(function DiffChangesList({
   const [isGitRepo, setIsGitRepo] = React.useState(() => cached?.isGitRepo ?? true)
   /** 首次 fetch 是否已返回——区分 loading 与真·空，避免 "没有代码改动" 误闪 */
   const [hasFetched, setHasFetched] = React.useState<boolean>(() => cached !== undefined)
-  const [collapsedDirs, setCollapsedDirs] = React.useState<Set<string>>(new Set())
+  // 折叠状态按会话持久化：切回文件或重启应用后，改动目录仍保持用户上次的展开形态。
+  const collapsedGroupsState = useAtomValue(agentDiffCollapsedGroupsAtom)
+  const setGroupExpanded = useSetAtom(setAgentDiffGroupExpandedAtom)
+  const collapsedDirs = React.useMemo(
+    () => readCollapsedGroupIds(collapsedGroupsState, sessionId),
+    [collapsedGroupsState, sessionId],
+  )
   const [searchQuery, setSearchQuery] = React.useState('')
   /** 单调递增的 fetch 序号，用于丢弃乱序到达的旧响应 */
   const fetchSeqRef = React.useRef(0)
@@ -222,16 +252,8 @@ export const DiffChangesList = React.memo(function DiffChangesList({
 
   /** 切换文件夹折叠 */
   const toggleDir = React.useCallback((dirName: string) => {
-    setCollapsedDirs(prev => {
-      const next = new Set(prev)
-      if (next.has(dirName)) {
-        next.delete(dirName)
-      } else {
-        next.add(dirName)
-      }
-      return next
-    })
-  }, [])
+    setGroupExpanded({ sessionId, groupId: dirName, expanded: collapsedDirs.has(dirName) })
+  }, [collapsedDirs, sessionId, setGroupExpanded])
 
   // 按 Git 仓库分组（在所有 hooks 之后、条件返回之前调用）
   const { fileGroups, matchedFilesCount } = React.useMemo(() => {
@@ -620,7 +642,7 @@ function NonGitChangesList({
   const title = hasEarlierChanges
     ? `本会话文件变更 · ${changes.length}`
     : `本会话文件变更 · 本轮 · ${current.length}`
-  const [isExpanded, setIsExpanded] = React.useState(true)
+  const { isExpanded, toggle } = usePersistentGroupExpanded(sessionId, NON_GIT_ROOT_GROUP_ID)
   const contentId = React.useId()
 
   return (
@@ -630,7 +652,7 @@ function NonGitChangesList({
         aria-expanded={isExpanded}
         aria-controls={contentId}
         className="group flex min-h-9 w-full items-center gap-1.5 px-3 py-2 text-left text-[13px] font-medium text-muted-foreground tabular-nums transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        onClick={() => setIsExpanded((expanded) => !expanded)}
+        onClick={toggle}
       >
         {isExpanded ? (
           <ChevronDown className="size-3.5 shrink-0 transition-transform duration-150" aria-hidden="true" />
@@ -670,7 +692,12 @@ function NonGitRunGroup({
   collapsible?: boolean
   defaultCollapsed?: boolean
 }): React.ReactElement {
-  const [isExpanded, setIsExpanded] = React.useState(!defaultCollapsed)
+  // 「更早」默认折叠，但用户展开过一次后，下次打开应保持展开。
+  const { isExpanded, toggle } = usePersistentGroupExpanded(
+    sessionId,
+    `non-git:${title}`,
+    !defaultCollapsed,
+  )
   const contentId = React.useId()
   const headerClassName = "flex w-full items-center gap-1.5 px-3 py-1 text-left text-[11px] font-medium text-muted-foreground tabular-nums"
   const headerContent = (
@@ -693,7 +720,7 @@ function NonGitRunGroup({
           aria-expanded={isExpanded}
           aria-controls={contentId}
           className={cn(headerClassName, 'hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring')}
-          onClick={() => setIsExpanded((expanded) => !expanded)}
+          onClick={toggle}
         >
           {headerContent}
         </button>

@@ -12,7 +12,7 @@ import { LeftSidebar } from './LeftSidebar'
 import { RightSidePanel } from './RightSidePanel'
 import { MainArea } from '@/components/tabs/MainArea'
 import { appModeAtom } from '@/atoms/app-mode'
-import { agentDiffPanelTabAtom, agentSessionComponentOpenMapAtom, agentSessionsAtom, agentSidePanelLayoutAtomFamily, agentSidePanelLayoutMapAtom, agentSidePanelSplitMapAtom, currentAgentSessionIdAtom, currentSessionSidePanelOpenAtom, isWorkspaceComponentTab, pruneAgentSidePanelLayouts, fileBrowserExpandedPathsAtom, fileBrowserScrollTopMapAtom, pruneFileBrowserStateMap } from '@/atoms/agent-atoms'
+import { agentDiffCollapsedGroupsAtom, agentDiffPanelTabAtom, agentSessionComponentOpenMapAtom, agentSessionsAtom, agentSidePanelLayoutAtomFamily, agentSidePanelLayoutMapAtom, agentSidePanelSplitMapAtom, currentAgentSessionIdAtom, currentSessionSidePanelOpenAtom, isWorkspaceComponentTab, pruneAgentDiffCollapsedGroups, pruneAgentSidePanelLayouts, fileBrowserExpandedPathsAtom, fileBrowserScrollTopMapAtom, pruneFileBrowserStateMap } from '@/atoms/agent-atoms'
 import { leftSidebarWidthAtom } from '@/atoms/sidebar-atoms'
 import { sidebarCollapsedAtom } from '@/atoms/tab-atoms'
 import { clampRightPanelWidth, getRightPanelMaxWidth } from './right-panel-layout'
@@ -185,6 +185,7 @@ export function AppShell(): React.ReactElement {
   const setRightPanelLayouts = useSetAtom(agentSidePanelLayoutMapAtom)
   const setFileBrowserExpandedPaths = useSetAtom(fileBrowserExpandedPathsAtom)
   const setFileBrowserScrollTopMap = useSetAtom(fileBrowserScrollTopMapAtom)
+  const setDiffCollapsedGroups = useSetAtom(agentDiffCollapsedGroupsAtom)
   const setRightPanelSplitMap = useSetAtom(agentSidePanelSplitMapAtom)
   const [rightPanelLayout, setRightPanelLayout] = useAtom(agentSidePanelLayoutAtomFamily(currentSessionId ?? ''))
   const [viewportWidth, setViewportWidth] = React.useState(() => window.innerWidth)
@@ -243,15 +244,19 @@ export function AppShell(): React.ReactElement {
 
   React.useEffect(() => {
     setRightPanelLayouts((previous) => pruneAgentSidePanelLayouts(previous, agentSessions, currentSessionId ?? undefined))
+    // 冷启动时会话列表先是空数组，此时清理会把所有会话已持久化的面板状态全部删掉，
+    // 表现就是每次重开应用都回到默认。等会话元数据就绪后再执行清理。
+    if (agentSessions.length === 0) return
     const retainedSessionIds = new Set(agentSessions.map((session) => session.id))
     if (currentSessionId) retainedSessionIds.add(currentSessionId)
     setFileBrowserExpandedPaths((previous) => pruneFileBrowserStateMap(previous, retainedSessionIds))
     setFileBrowserScrollTopMap((previous) => pruneFileBrowserStateMap(previous, retainedSessionIds))
+    setDiffCollapsedGroups((previous) => pruneAgentDiffCollapsedGroups(previous, retainedSessionIds))
     setRightPanelSplitMap((previous) => {
       const next = new Map([...previous].filter(([sessionId]) => retainedSessionIds.has(sessionId)))
       return next.size === previous.size ? previous : next
     })
-  }, [agentSessions, currentSessionId, setFileBrowserExpandedPaths, setFileBrowserScrollTopMap, setRightPanelLayouts, setRightPanelSplitMap])
+  }, [agentSessions, currentSessionId, setDiffCollapsedGroups, setFileBrowserExpandedPaths, setFileBrowserScrollTopMap, setRightPanelLayouts, setRightPanelSplitMap])
 
   React.useEffect(() => {
     // 分屏本身是临时宽布局，不能因为其中一个 Pane 是 Browser/Preview 就污染退出后的宽度。

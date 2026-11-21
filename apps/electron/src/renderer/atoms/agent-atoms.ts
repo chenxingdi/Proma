@@ -15,6 +15,10 @@ import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-
 import type { AgentQueuedMessage } from '@/lib/agent-message-queue'
 import type { SessionFileChange } from '@/lib/session-file-changes'
 import type { RightWorkspaceSplitState } from '@/lib/right-workspace-split'
+import { createDebouncedStringStorage } from '@/lib/debounced-storage'
+import { createJsonValueStorage, createSerializedMapStorage, decodeBooleanRecord } from '@/lib/serialized-map-storage'
+import type { DiffCollapsedGroupsState } from '@/lib/diff-collapsed-groups'
+import { pruneCollapsedGroups, sanitizeCollapsedGroups, setGroupExpanded } from '@/lib/diff-collapsed-groups'
 
 /** 活动状态 */
 export type ActivityStatus = 'pending' | 'running' | 'completed' | 'error' | 'backgrounded'
@@ -601,10 +605,19 @@ export const agentFileSourceFilterMapAtom = atomWithStorage<Record<string, Agent
 )
 
 /**
- * 文件树展开状态。Files Tab 切换时 FileBrowser 会卸载，因此按会话与文件根保存
- * 每个目录的显式展开/折叠状态；仅用于当前应用运行期的 UI 恢复，不写入用户的长期偏好。
+ * 文件树展开状态。Files Tab 切换时 FileBrowser 会卸载，切回或重启应用都要回到
+ * 用户上次看到的层级，因此按会话与文件根持久化每个目录的显式展开/折叠记录。
  */
-export const fileBrowserExpandedPathsAtom = atom<Map<string, Map<string, boolean>>>(new Map())
+export const fileBrowserExpandedPathsAtom = atomWithStorage<Map<string, Map<string, boolean>>>(
+  'proma-agent-file-browser-expanded-paths',
+  new Map(),
+  createSerializedMapStorage<Map<string, boolean>>({
+    stringStorage: createDebouncedStringStorage(),
+    encodeValue: (value) => Object.fromEntries(value),
+    decodeValue: decodeBooleanRecord,
+  }),
+  { getOnInit: true },
+)
 
 /** 更新单个目录的展开状态，同时保留其他文件树与目录的状态。 */
 export function updateFileBrowserExpandedPath(
@@ -660,8 +673,17 @@ export function relocateFileBrowserExpandedPath(
   return next
 }
 
-/** Files Tab 各滚动视图的 scrollTop，按会话和文件视图隔离。 */
-export const fileBrowserScrollTopMapAtom = atom<Map<string, number>>(new Map())
+/** Files Tab 各滚动视图的 scrollTop，按会话和文件视图隔离并跨重启恢复。 */
+export const fileBrowserScrollTopMapAtom = atomWithStorage<Map<string, number>>(
+  'proma-agent-file-browser-scroll-top',
+  new Map(),
+  createSerializedMapStorage<number>({
+    stringStorage: createDebouncedStringStorage(),
+    encodeValue: (value) => value,
+    decodeValue: (raw) => (typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : undefined),
+  }),
+  { getOnInit: true },
+)
 
 /** 清理已删除会话遗留的文件树 UI 状态；保留 standalone FileBrowser 状态。 */
 export function pruneFileBrowserStateMap<T>(state: Map<string, T>, retainedSessionIds: ReadonlySet<string>): Map<string, T> {
@@ -820,8 +842,36 @@ export const agentSessionComponentTabsAtomFamily = atomFamily((sessionId: string
   },
 ))
 
-/** 侧面板当前工作区：基础视图或某个浏览器网页（per-session Map）。 */
-export const agentDiffPanelTabAtom = atom<Map<string, AgentSidePanelTab | 'browser' | 'preview'>>(new Map())
+/**
+ * 右侧工作区上次停留在哪个分栏：按会话持久化，重启或重新打开会话时回到原处。
+ *
+ * 这里只存「可重建的静态分栏」——文件、改动、项目级组件。浏览器网页、文件预览、
+ * 终端和子 Agent 的 Tab 依赖当次运行期的会话状态，存下来会在重启后指向不存在的
+ * 目标，因此遇到这类值不写入，回退到上次的静态分栏。
+ */
+export const agentDiffPanelTabAtom = atomWithStorage<Map<string, AgentSidePanelTab | 'browser' | 'preview'>>(
+  'proma-agent-side-panel-active-tab',
+  new Map(),
+  createSerializedMapStorage<AgentSidePanelTab | 'browser' | 'preview'>({
+    // 切到浏览器、预览或终端时不覆盖上次的静态分栏，关掉应用后仍能回到文件或改动。
+    preservePreviousWhenUndefined: true,
+    encodeValue: (value) => (isRestorableSidePanelTab(value) ? value : undefined),
+    decodeValue: (raw) => (typeof raw === 'string' && isRestorableSidePanelTab(raw) ? raw : undefined),
+  }),
+  { getOnInit: true },
+)
+
+/**
+ * 能在重启后自行重建的右侧分栏：文件、改动与项目级组件。
+ *
+ * `chat`、`delegation`、浏览器网页、文件预览和终端都依赖当次的运行期状态，
+ * 只存 Tab 名会让顶栏高亮一个内容区实际回退到「文件」的分栏，因此不持久化。
+ */
+export function isRestorableSidePanelTab(tab: string): tab is AgentSidePanelBaseTab {
+  return tab === 'files'
+    || tab === 'changes'
+    || isWorkspaceComponentTab(tab)
+}
 
 /** 当前 renderer 运行期内的右侧双 Pane 状态；动态 Tab 失效时由 SidePanel 主动清理。 */
 export const agentSidePanelSplitMapAtom = atom<Map<string, RightWorkspaceSplitState>>(new Map())
@@ -909,11 +959,47 @@ export const closeWorkspaceComponentAtom = atom(
   },
 )
 
-/** Diff 视图模式：'split' | 'unified'，默认使用统一预览 */
-export const agentDiffViewModeAtom = atom<'split' | 'unified'>('unified')
+/** Diff 视图模式：'split' | 'unified'。用户选过的排布要跨重启保持，默认统一预览。 */
+export const agentDiffViewModeAtom = atomWithStorage<'split' | 'unified'>(
+  'proma-agent-diff-view-mode',
+  'unified',
+  createJsonValueStorage<'split' | 'unified'>({
+    sanitize: (raw) => (raw === 'split' || raw === 'unified' ? raw : undefined),
+  }),
+  { getOnInit: true },
+)
 
 /** Diff 刷新版本号 — 按 session 隔离，Agent 写工具完成时递增 */
 export const agentDiffRefreshVersionAtom = atom(new Map<string, number>())
+
+/** 改动面板的目录与分组折叠状态：按会话持久化，重新打开后保持上次形态。 */
+export const agentDiffCollapsedGroupsAtom = atomWithStorage<DiffCollapsedGroupsState>(
+  'proma-agent-diff-collapsed-groups',
+  {},
+  createJsonValueStorage<DiffCollapsedGroupsState>({ sanitize: sanitizeCollapsedGroups }),
+  { getOnInit: true },
+)
+
+/** 写入某会话下一个分组的展开状态；目录树与「本轮 / 更早」分组共用。 */
+export const setAgentDiffGroupExpandedAtom = atom(
+  null,
+  (_get, set, input: { sessionId: string; groupId: string; expanded: boolean }) => {
+    set(agentDiffCollapsedGroupsAtom, (previous) => setGroupExpanded(
+      previous,
+      input.sessionId,
+      input.groupId,
+      input.expanded,
+    ))
+  },
+)
+
+/** 清理已删除会话的折叠记录。 */
+export function pruneAgentDiffCollapsedGroups(
+  state: DiffCollapsedGroupsState,
+  retainedSessionIds: ReadonlySet<string>,
+): DiffCollapsedGroupsState {
+  return pruneCollapsedGroups(state, retainedSessionIds)
+}
 
 /** 当前会话选中的 worktree 路径，null = 默认行为（显示 session 改动） */
 export const agentSelectedWorktreeAtom = atom(new Map<string, string | null>())
