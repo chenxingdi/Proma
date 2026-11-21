@@ -10,7 +10,7 @@ import { existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, statS
 import { realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, PLANNING_CONFLICT_ERROR, MAX_ATTACHMENT_SIZE, isPromaPermissionMode, normalizePathForCompare, removeMcpServerFromConfig, TERMINAL_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, BOT_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, PLANNING_CONFLICT_ERROR, MAX_ATTACHMENT_SIZE, isPromaPermissionMode, normalizePathForCompare, removeMcpServerFromConfig, TERMINAL_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS, TRAY_IPC_CHANNELS } from '../types'
 import type {
   QuickTaskSubmitInput,
@@ -90,6 +90,11 @@ import type {
   ChatToolInfo,
   ChatToolState,
   ChatToolMeta,
+  BotIdentity,
+  CreateBotInput,
+  UpdateBotIpcInput,
+  CreateBotWithConversationInput,
+  CreatedBotWithConversation,
   MoveSessionToWorkspaceInput,
   ForkSessionInput,
   RewindSessionInput,
@@ -423,6 +428,7 @@ function stopWorkspaceMemoryWatch(webContentsId: number, workspaceSlug: string):
 }
 
 import { getAllToolInfos } from './lib/chat-tool-registry'
+import { createBotManager } from './lib/bot-manager'
 import { updateToolState, addCustomTool, deleteCustomTool } from './lib/chat-tool-config'
 import {
   getSystemPromptConfig,
@@ -3742,6 +3748,106 @@ export function registerIpcHandlers(): void {
     CHAT_TOOL_IPC_CHANNELS.DELETE_CUSTOM_TOOL,
     async (_, toolId: string): Promise<void> => {
       deleteCustomTool(toolId)
+    }
+  )
+
+  // ===== 会话 Bot（chat 会话转 Bot 的三通道契约）=====
+
+  /** 入参边界校验：非空字符串 */
+  const isBotNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
+
+  // 列出全部 Bot（renderer 据此建立 conversationId → Bot 映射）
+  ipcMain.handle(
+    BOT_IPC_CHANNELS.LIST,
+    async (): Promise<BotIdentity[]> => {
+      return createBotManager().listBots()
+    }
+  )
+
+  // 保存会话 Bot：存在则更新身份字段，不存在则创建；返回最终 BotIdentity
+  ipcMain.handle(
+    BOT_IPC_CHANNELS.SAVE_FOR_CONVERSATION,
+    async (_, input: CreateBotInput & { conversationId: string }): Promise<BotIdentity> => {
+      if (!input || !isBotNonEmptyString(input.conversationId) || !isBotNonEmptyString(input.name)) {
+        throw new Error('会话 Bot 保存失败：conversationId 与 name 必须为非空字符串')
+      }
+      const manager = createBotManager()
+      // 服务商 / 模型为可选覆盖：非空字符串才透传，空字符串归一为 undefined 以清空选择。
+      const normalizedChannelId = isBotNonEmptyString(input.channelId) ? input.channelId : undefined
+      const normalizedModelId = isBotNonEmptyString(input.modelId) ? input.modelId : undefined
+      const patch: UpdateBotIpcInput = {
+        id: '',
+        name: input.name.trim(),
+        ...(input.role !== undefined ? { role: input.role } : {}),
+        ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
+        channelId: normalizedChannelId,
+        modelId: normalizedModelId,
+      }
+      const existing = manager.findBotByConversationId(input.conversationId)
+      if (existing) {
+        const updated = manager.updateBot(existing.id, patch)
+        if (updated) return updated
+      }
+      return manager.createBot({
+        name: input.name.trim(),
+        ...(patch.role !== undefined ? { role: patch.role } : {}),
+        ...(patch.instructions !== undefined ? { instructions: patch.instructions } : {}),
+        ...(normalizedChannelId !== undefined ? { channelId: normalizedChannelId } : {}),
+        ...(normalizedModelId !== undefined ? { modelId: normalizedModelId } : {}),
+        conversationId: input.conversationId,
+      })
+    }
+  )
+
+  // 移除会话 Bot：按 conversationId 找到目标并删除，返回是否删除成功
+  ipcMain.handle(
+    BOT_IPC_CHANNELS.REMOVE_FOR_CONVERSATION,
+    async (_, conversationId: string): Promise<boolean> => {
+      if (!isBotNonEmptyString(conversationId)) {
+        throw new Error('会话 Bot 移除失败：conversationId 必须为非空字符串')
+      }
+      const manager = createBotManager()
+      const existing = manager.findBotByConversationId(conversationId)
+      return existing ? manager.deleteBot(existing.id) : false
+    }
+  )
+
+  // 原子新建 Bot 并创建其绑定会话：保存时才落库，绑定失败回滚会话，避免留下空对话
+  ipcMain.handle(
+    BOT_IPC_CHANNELS.CREATE_WITH_CONVERSATION,
+    async (_, input: CreateBotWithConversationInput): Promise<CreatedBotWithConversation> => {
+      if (!input || typeof input !== 'object' || !isBotNonEmptyString(input.name)) {
+        throw new Error('新建 Bot 失败：name 必须为非空字符串')
+      }
+      if (input.channelId !== undefined && typeof input.channelId !== 'string') {
+        throw new Error('新建 Bot 失败：channelId 必须为字符串')
+      }
+      if (input.modelId !== undefined && typeof input.modelId !== 'string') {
+        throw new Error('新建 Bot 失败：modelId 必须为字符串')
+      }
+      const name = input.name.trim()
+      if (!name) {
+        throw new Error('新建 Bot 失败：name 不能只含空白字符')
+      }
+      const normalizedChannelId = isBotNonEmptyString(input.channelId) ? input.channelId : undefined
+      const normalizedModelId = isBotNonEmptyString(input.modelId) ? input.modelId : undefined
+      // 会话标题用 Bot 名称，模型/服务商用 Bot 的选择，便于新会话立即用对模型；第 2 参是 modelId、第 3 参是 channelId
+      const conversation = createConversation(name, normalizedModelId, normalizedChannelId)
+      try {
+        const bot = createBotManager().createBot({
+          name,
+          ...(input.role !== undefined ? { role: input.role } : {}),
+          ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
+          ...(normalizedChannelId !== undefined ? { channelId: normalizedChannelId } : {}),
+          ...(normalizedModelId !== undefined ? { modelId: normalizedModelId } : {}),
+          conversationId: conversation.id,
+        })
+        return { conversation, bot }
+      } catch (error) {
+        // Bot 绑定失败时回滚刚创建的会话，避免界面出现无法解释的空对话
+        deleteConversation(conversation.id)
+        throw error
+      }
     }
   )
 

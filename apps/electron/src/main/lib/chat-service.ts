@@ -28,7 +28,10 @@ import { readAttachmentAsBase64, isImageAttachment } from './attachment-service'
 import { extractTextFromAttachment, isDocumentAttachment } from './document-parser'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
-import { getEnabledTools } from './chat-tool-registry'
+import { getEnabledTools, getAllToolIds } from './chat-tool-registry'
+import { createBotManager } from './bot-manager'
+import { resolveBotModelOverride } from './bot-model-resolver'
+import { buildBotIdentityPrompt } from './bot-prompt-service'
 import { executeToolCalls } from './chat-tool-executor'
 import { createFallbackTitle, sanitizeGeneratedTitle, SHORT_MESSAGE_THRESHOLD, TITLE_PROMPT } from './title-generation'
 
@@ -200,9 +203,27 @@ export async function sendMessage(
     thinkingEnabled, thinkingLevel, enabledToolIds,
   } = input
 
+  // 会话若绑定了 Bot：注入持久身份提示，并让 Bot 使用完整工具集。
+  // 未绑定时保持原有行为逐字节不变。
+  const boundBot = createBotManager().findBotByConversationId(conversationId)
+  const effectiveEnabledToolIds = boundBot ? getAllToolIds() : enabledToolIds
+
   // 1. 查找渠道
   const channels = listChannels()
-  const channel = channels.find((c) => c.id === channelId)
+  // 若 Bot 显式配置了服务商 + 模型，解析出发消息时应生效的覆盖值。
+  const modelOverride = resolveBotModelOverride({ channelId, modelId }, boundBot, channels)
+  const effectiveChannelId = modelOverride.channelId
+  const effectiveModelId = modelOverride.modelId
+  // Bot 配置失效时中止发送，避免静默使用错误模型；须早于追加用户消息与创建 AbortController。
+  if (modelOverride.error) {
+    webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
+      conversationId,
+      error: modelOverride.error,
+    })
+    return false
+  }
+
+  const channel = channels.find((c) => c.id === effectiveChannelId)
   if (!channel) {
     webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
       conversationId,
@@ -230,7 +251,7 @@ export async function sendMessage(
   // 2. 解密 API Key
   let apiKey: string
   try {
-    apiKey = await resolveChannelRuntimeApiKey(channelId)
+    apiKey = await resolveChannelRuntimeApiKey(effectiveChannelId)
   } catch {
     webContents.send(CHAT_IPC_CHANNELS.STREAM_ERROR, {
       conversationId,
@@ -271,15 +292,18 @@ export async function sendMessage(
     // 7. 获取适配器
     const adapter = getAdapter(channel.provider)
 
-    // 8. 从工具注册表获取启用的工具
-    const { tools, systemPromptAppend } = getEnabledTools(enabledToolIds)
+    // 8. 从工具注册表获取启用的工具（Bot 命中时使用全部工具 id，由注册表按凭据过滤）
+    const { tools, systemPromptAppend } = getEnabledTools(effectiveEnabledToolIds)
 
-    // 注入工具系统提示词
-    const effectiveSystemMessage = systemPromptAppend && systemMessage
+    // 注入工具系统提示词；若命中 Bot，再追加其持久身份提示
+    const toolSystemMessage = systemPromptAppend && systemMessage
       ? systemMessage + systemPromptAppend
       : systemPromptAppend
         ? systemPromptAppend
         : systemMessage
+    const effectiveSystemMessage = boundBot
+      ? [toolSystemMessage, buildBotIdentityPrompt(boundBot)].filter(Boolean).join('\n')
+      : toolSystemMessage
 
     const proxyUrl = await getEffectiveProxyUrl()
     const fetchFn = getFetchFn(proxyUrl)
@@ -329,7 +353,7 @@ export async function sendMessage(
       const request = adapter.buildStreamRequest({
         baseUrl: channel.baseUrl,
         apiKey,
-        modelId,
+        modelId: effectiveModelId,
         history: enrichedHistory,
         userMessage: enrichedUserMessage,
         systemMessage: effectiveSystemMessage,
@@ -400,7 +424,7 @@ export async function sendMessage(
       const finalRequest = adapter.buildStreamRequest({
         baseUrl: channel.baseUrl,
         apiKey,
-        modelId,
+        modelId: effectiveModelId,
         history: enrichedHistory,
         userMessage: enrichedUserMessage,
         systemMessage: effectiveSystemMessage,
@@ -429,7 +453,7 @@ export async function sendMessage(
         role: 'assistant',
         content: accumulatedContent,
         createdAt: Date.now(),
-        model: modelId,
+        model: effectiveModelId,
         reasoning: accumulatedReasoning || undefined,
         toolActivities: accumulatedToolActivities.length > 0 ? accumulatedToolActivities : undefined,
         attachments: accumulatedGeneratedAttachments.length > 0 ? accumulatedGeneratedAttachments : undefined,
@@ -448,7 +472,7 @@ export async function sendMessage(
 
     webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
       conversationId,
-      model: modelId,
+      model: effectiveModelId,
       messageId: (accumulatedContent.trim() || accumulatedGeneratedAttachments.length > 0) ? assistantMsgId : undefined,
     })
     return true
@@ -465,7 +489,7 @@ export async function sendMessage(
           role: 'assistant',
           content: accumulatedContent,
           createdAt: Date.now(),
-          model: modelId,
+          model: effectiveModelId,
           reasoning: accumulatedReasoning || undefined,
           stopped: true,
           toolActivities: accumulatedToolActivities.length > 0 ? accumulatedToolActivities : undefined,
@@ -480,13 +504,13 @@ export async function sendMessage(
 
         webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
           conversationId,
-          model: modelId,
+          model: effectiveModelId,
           messageId: assistantMsgId,
         })
       } else {
         webContents.send(CHAT_IPC_CHANNELS.STREAM_COMPLETE, {
           conversationId,
-          model: modelId,
+          model: effectiveModelId,
         })
       }
       return true
@@ -503,7 +527,7 @@ export async function sendMessage(
         role: 'assistant',
         content: accumulatedContent,
         createdAt: Date.now(),
-        model: modelId,
+        model: effectiveModelId,
         reasoning: accumulatedReasoning || undefined,
         stopped: true,
         error: errorMessage,
@@ -525,7 +549,7 @@ export async function sendMessage(
         role: 'assistant',
         content: '',
         createdAt: Date.now(),
-        model: modelId,
+        model: effectiveModelId,
         stopped: true,
         error: errorMessage,
       }

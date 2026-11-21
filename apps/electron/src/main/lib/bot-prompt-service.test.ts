@@ -38,4 +38,14 @@ describe('bot-prompt-service', () => {
   test('Given 身份 When buildBotIdentityPrompt Then 声明这是持久 Bot 身份', () => {
     expect(buildBotIdentityPrompt(bot())).toContain('Bot')
   })
+
+  test('Given 绑定了 conversationId 的身份 When buildBotIdentityPrompt Then 仍生成正确的身份提示', () => {
+    const prompt = buildBotIdentityPrompt(bot({
+      conversationId: 'chat-123',
+      role: '研究助手',
+      instructions: '保持简洁。',
+    }))
+    expect(prompt).toContain('研究助手')
+    expect(prompt).toContain('保持简洁。')
+  })
 })
