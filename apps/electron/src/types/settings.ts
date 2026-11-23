@@ -309,8 +309,6 @@ export interface AppSettings {
   lastWindowsTerminalProfile?: TerminalProfile
   /** Windows 上 Agent Bash 工具的运行环境；默认自动选择 Git Bash，WSL 需用户显式启用。 */
   windowsShellPreference?: WindowsShellPreference
-  /** 侧栏「自动任务」合成项目组在项目列表中的位置索引（默认 0 = 最靠前；可拖拽调整） */
-  agentAutomationGroupOrder?: number
   /** 是否已完成 Onboarding 流程 */
   onboardingCompleted?: boolean
   /** 已完成的 Onboarding 版本；低于当前版本时会再次展示引导。 */
