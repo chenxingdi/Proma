@@ -272,8 +272,8 @@ export interface AgentPendingPrompt {
 export const agentSessionsAtom = atom<AgentSessionMeta[]>([])
 export const agentWorkspacesAtom = atom<AgentWorkspace[]>([])
 export const currentAgentWorkspaceIdAtom = atom<string | null>(null)
-/** 常用项目展示顺序（最近使用优先，当前项目在最前）。仅作用于侧栏展示，不改变持久化排序 */
-export const recentAgentWorkspaceIdsAtom = atom<string[]>([])
+/** 侧栏「自动任务」合成项目组在项目列表中的位置索引（默认 0 = 最靠前；从 settings.json 加载） */
+export const automationGroupOrderAtom = atom<number>(0)
 /** 全局默认渠道 ID（新会话继承用，从 settings.json 加载） */
 export const agentChannelIdAtom = atom<string | null>(null)
 /** 全局默认模型 ID（新会话继承用，从 settings.json 加载） */
