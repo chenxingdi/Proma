@@ -47,6 +47,7 @@ import {
   agentSessionPathMapAtom,
   currentAgentWorkspaceIdAtom,
   agentWorkspacesAtom,
+  recentAgentWorkspaceIdsAtom,
   workspaceCapabilitiesVersionAtom,
   agentDiffPanelTabAtom,
   agentDiffRefreshVersionAtom,
@@ -632,8 +633,10 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   const [moveSourceWorkspaceId, setMoveSourceWorkspaceId] = React.useState<string | undefined>()
   /** 每个项目额外展开显示的会话数量（每次点击"显示更多" +10），未点击则为 0 或无值 */
   const [expandedExtraCountMap, setExpandedExtraCountMap] = React.useState<Map<string, number>>(new Map())
-  /** 记录被用户手动折叠的工作区 ID（点击当前工作区标题时折叠/展开）。刻意不持久化：折叠被视为临时查看行为，刷新/重启后恢复默认展开 */
+  /** 记录被折叠的工作区 ID。启动时默认只展开当前项目，其余项目折叠；用户仍可手动折叠/展开。刻意不持久化：状态被视为临时查看行为，刷新/重启后恢复默认 */
   const [collapsedWorkspaceIds, setCollapsedWorkspaceIds] = React.useState<Set<string>>(new Set())
+  /** 常用项目：按最近设为当前项目的顺序排列（最新在最前）。被顶下去后仍留在顶部区域，不改变持久化排序 */
+  const [recentProjectIds, setRecentProjectIds] = useAtom(recentAgentWorkspaceIdsAtom)
   /** 归档项目默认折叠；只记录用户主动展开的项目，避免影响活跃视图的临时状态。 */
   const [expandedArchivedProjectIds, setExpandedArchivedProjectIds] = React.useState<Set<string>>(new Set())
   /** 记录已展开的委派母会话；默认收起，避免批量派遣后撑满侧栏 */
@@ -697,6 +700,28 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   const [currentWorkspaceId, setCurrentWorkspaceId] = useAtom(currentAgentWorkspaceIdAtom)
   const [workspaces, setWorkspaces] = useAtom(agentWorkspacesAtom)
   const setMode = useSetAtom(appModeAtom)
+
+  /** 启动后只展开当前项目：首次拿到当前项目与工作区列表时，一次性把其余项目（含定时任务合成组）折叠。仅执行一次，不影响后续手动展开/折叠与项目切换 */
+  const initializedProjectCollapseRef = React.useRef(false)
+  React.useEffect(() => {
+    if (initializedProjectCollapseRef.current) return
+    if (!currentWorkspaceId || workspaces.length === 0) return
+    initializedProjectCollapseRef.current = true
+    const initialCollapsed = new Set<string>([AUTOMATION_GROUP_ID])
+    for (const workspace of workspaces) {
+      if (workspace.id !== currentWorkspaceId) initialCollapsed.add(workspace.id)
+    }
+    setCollapsedWorkspaceIds(initialCollapsed)
+  }, [currentWorkspaceId, workspaces])
+
+  /** 项目被设为当前时加入常用列表最前；被新项目顶下去后仍保留在顶部区域 */
+  React.useEffect(() => {
+    if (!currentWorkspaceId) return
+    setRecentProjectIds((prev) => {
+      if (prev[0] === currentWorkspaceId) return prev
+      return [currentWorkspaceId, ...prev.filter((id) => id !== currentWorkspaceId)]
+    })
+  }, [currentWorkspaceId])
 
   // 当前项目能力（MCP + Skill 计数）
   const [capabilities, setCapabilities] = React.useState<WorkspaceCapabilities | null>(null)
@@ -1328,9 +1353,9 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     window.electronAPI.updateSettings({ agentWorkspaceId: workspaceId }).catch(console.error)
   }, [currentWorkspaceId, setCurrentWorkspaceId, setActiveView])
 
-  /** 合成「自动任务」组头部点击：仅折叠/展开，绝不切换当前项目（它不是真实工作区） */
-  const handleToggleGroupCollapse = React.useCallback((groupId: string): void => {
-    setCollapsedWorkspaceIds((prev) => toggleSetEntry(prev, groupId))
+  /** 合成「自动任务」组头部点击：定时任务始终折叠，不响应展开；绝不切换当前项目（它不是真实工作区） */
+  const handleToggleGroupCollapse = React.useCallback((_groupId: string): void => {
+    // 定时任务组不允许展开
   }, [])
 
   /** 归档项目默认折叠；点击后仅在归档视图内切换展开状态。 */
@@ -1653,7 +1678,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     })
   }, [])
 
-  /** 创建新项目，并设为当前项目 */
+  /** 创建新项目，并设为当前项目（原当前项目顺位下移为常用项目） */
   const handleCreateProject = React.useCallback(async (): Promise<void> => {
     const trimmed = newProjectName.trim()
     if (!trimmed) {
@@ -2245,18 +2270,37 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   )
 
   /**
-   * 项目组的最终显示顺序：把合成「自动任务」组按持久化的索引插入真实项目组中
-   * （默认索引 0 = 最靠前）。合成组与真实项目一起参与拖拽排序。
+   * 项目组的最终显示顺序：常用项目（按最近使用顺序，当前项目在最前）优先，
+   * 其余项目保持持久化顺序；合成「自动任务」组仍按持久化索引插入。
+   * 全部只作用于展示层，不改变 workspaces 的持久化顺序。
    */
   const displayProjectGroups = React.useMemo<AgentProjectGroup[]>(
     () => {
-      if (!automationGroup) return agentProjectGroups
-      const idx = Math.min(Math.max(automationGroupOrder, 0), agentProjectGroups.length)
-      const combined = [...agentProjectGroups]
+      // 先按常用顺序取出真实项目（当前项目在最前），其余项目保持持久化顺序
+      const groupById = new Map(agentProjectGroups.map((group) => [group.workspace.id, group]))
+      const ordered: AgentProjectGroup[] = []
+      const seen = new Set<string>()
+      for (const id of recentProjectIds) {
+        const group = groupById.get(id)
+        if (group && !seen.has(id)) {
+          ordered.push(group)
+          seen.add(id)
+        }
+      }
+      const recentCount = ordered.length
+      for (const group of agentProjectGroups) {
+        if (!seen.has(group.workspace.id)) ordered.push(group)
+      }
+
+      if (!automationGroup) return ordered
+      // 定时任务组不挤进常用项目区，插在常用项目之后（仍遵循其持久化索引）
+      const rawIdx = Math.min(Math.max(automationGroupOrder, 0), ordered.length)
+      const idx = Math.max(rawIdx, recentCount)
+      const combined = [...ordered]
       combined.splice(idx, 0, automationGroup)
       return combined
     },
-    [agentProjectGroups, automationGroup, automationGroupOrder],
+    [agentProjectGroups, automationGroup, automationGroupOrder, recentProjectIds],
   )
 
   /** Agent 归档会话按项目分组；归档列表仍只在进入该视图后按需加载。 */
@@ -2658,7 +2702,11 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   const agentArchivedVirtualRows = React.useMemo<VirtualSidebarRow[]>(() => {
     const rows: VirtualSidebarRow[] = []
     for (const group of archivedAgentSessionProjectGroups) {
-      const collapsed = !expandedArchivedProjectIds.has(group.id)
+      const isAuto = group.kind === 'automation'
+      // 归档定时任务组同样始终折叠，不参与展开
+      const collapsed = isAuto || !expandedArchivedProjectIds.has(group.id)
+      // 归档定时任务有新任务：存在未查看的定时任务会话
+      const hasNewAutomationTask = isAuto && group.sessions.some((session) => unviewedCompletedSessionIds.has(session.id))
       const isCurrentProject = group.kind === 'workspace' && group.id === currentWorkspaceId
       rows.push({
         id: `agent-archived-project-${group.id}`,
@@ -2666,11 +2714,14 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
         content: (
           <div className="pl-1 pr-3">
             <section className="relative py-0.5 rounded-md">
+              {isAuto && hasNewAutomationTask && (
+                <span className="absolute inset-y-0.5 left-0 w-[3px] rounded-full bg-red-500 pointer-events-none" />
+              )}
               <div className="group/project relative flex items-center">
                 <button
                   type="button"
                   aria-expanded={!collapsed}
-                  onClick={() => handleToggleArchivedProject(group.id)}
+                  onClick={() => { if (!isAuto) handleToggleArchivedProject(group.id) }}
                   className={cn(
                     'relative flex-1 min-w-0 flex h-[34px] items-center gap-2 pl-[10px] pr-1 py-1.5 rounded-md text-left transition-[color,background-color] titlebar-no-drag hover:bg-foreground/[0.025]',
                     'text-[hsl(var(--sidebar-primary-foreground))] hover:text-[hsl(var(--sidebar-primary-foreground))]',
@@ -2781,7 +2832,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       }
     }
     return rows
-  }, [activeDelegationSessionId, activeSessionId, agentIndicatorMap, archivedAgentSessionProjectGroups, collapsedDelegationParentIds, currentWorkspaceId, expandedArchivedProjectIds, expandedDelegationParentIds, handleAgentRename, handleRequestDelete, handleRequestMove, handleSelectAgentSession, handleToggleArchiveAgent, handleToggleArchivedProject, handleToggleDelegationParent, handleTogglePinAgent, handleToggleStarAgent, relativeTimeNow, sessionHoverPreviewEnabled, workspaceNameMap])
+  }, [activeDelegationSessionId, activeSessionId, agentIndicatorMap, archivedAgentSessionProjectGroups, collapsedDelegationParentIds, currentWorkspaceId, expandedArchivedProjectIds, expandedDelegationParentIds, handleAgentRename, handleRequestDelete, handleRequestMove, handleSelectAgentSession, handleToggleArchiveAgent, handleToggleArchivedProject, handleToggleDelegationParent, handleTogglePinAgent, handleToggleStarAgent, relativeTimeNow, sessionHoverPreviewEnabled, unviewedCompletedSessionIds, workspaceNameMap])
 
   const agentActiveVirtualRows = React.useMemo<VirtualSidebarRow[]>(() => {
     if (viewMode !== 'active') return []
@@ -2890,7 +2941,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       }
     }
 
-    const hasExpandedProject = displayProjectGroups.some((group) => !collapsedWorkspaceIds.has(group.workspace.id))
+    const hasExpandedProject = displayProjectGroups.some((group) => group.workspace.id !== AUTOMATION_GROUP_ID && !collapsedWorkspaceIds.has(group.workspace.id))
 
     rows.push({
       id: 'agent-project-heading',
@@ -2977,7 +3028,10 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
 
     for (const group of displayProjectGroups) {
       const isAuto = group.workspace.id === AUTOMATION_GROUP_ID
-      const collapsed = collapsedWorkspaceIds.has(group.workspace.id)
+      // 定时任务组始终折叠，不参与展开
+      const collapsed = isAuto || collapsedWorkspaceIds.has(group.workspace.id)
+      // 定时任务有新任务：存在未查看的定时任务会话
+      const hasNewAutomationTask = isAuto && group.sessions.some((session) => unviewedCompletedSessionIds.has(session.id))
       const extraCount = expandedExtraCountMap.get(group.workspace.id) ?? 0
       const visible = getVisibleAgentProjectSessions({
         group,
@@ -3000,6 +3054,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
               expanded={extraCount > 0}
               extraCount={extraCount}
               collapsed={collapsed}
+              hasNewAutomationTask={hasNewAutomationTask}
               activeSessionId={activeSessionId}
               activeDelegationSessionId={activeDelegationSessionId}
               agentIndicatorMap={agentIndicatorMap}
@@ -3132,6 +3187,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     relativeTimeNow,
     sessionHoverPreviewEnabled,
     setPendingRestoreProjectRootId,
+    unviewedCompletedSessionIds,
     workspaceNameMap,
     currentWorkspaceId,
     viewMode,
@@ -4672,6 +4728,8 @@ interface AgentProjectGroupItemProps {
   workspaceNameMap?: Map<string, string>
   expanded: boolean
   collapsed: boolean
+  /** 定时任务是否有未查看的新会话；为 true 时在标题左侧显示红色竖块 */
+  hasNewAutomationTask?: boolean
   /** 用户已点击"显示更多"额外展开的会话数量（基于 collapsedSessions 之上累加） */
   extraCount: number
   activeSessionId: string | null
@@ -4716,6 +4774,7 @@ const AgentProjectGroupItem = React.memo(function AgentProjectGroupItem({
   workspaceNameMap,
   expanded,
   collapsed,
+  hasNewAutomationTask = false,
   extraCount,
   activeSessionId,
   activeDelegationSessionId,
@@ -4815,6 +4874,10 @@ const AgentProjectGroupItem = React.memo(function AgentProjectGroupItem({
     >
       {dropPosition === 'before' && (
         <div className="absolute -top-0.5 left-3 right-3 h-0.5 translate-x-[2px] rounded-full bg-primary z-10" />
+      )}
+
+      {isAutomationGroup && hasNewAutomationTask && (
+        <span className="absolute inset-y-0.5 left-0 w-[3px] rounded-full bg-red-500 pointer-events-none" />
       )}
 
       <div className="group/project relative flex items-center">

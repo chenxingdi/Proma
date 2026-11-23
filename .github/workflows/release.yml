@@ -73,6 +73,8 @@ jobs:
           TAG="v$(node -p "require('./apps/electron/package.json').version")"
           echo "目标 tag: $TAG"
           TAG="$TAG" node --input-type=commonjs <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
           const token = process.env.GH_TOKEN
           const repo = process.env.GITHUB_REPOSITORY
           const tag = process.env.TAG
@@ -80,6 +82,15 @@ jobs:
             Authorization: `token ${token}`,
             Accept: 'application/vnd.github+json',
             'User-Agent': 'proma-release',
+          }
+          // 从 release-notes/<tag>.md 读取发布说明；找不到时保留原 body。
+          const notePath = path.join(process.cwd(), 'release-notes', `${tag}.md`)
+          let releaseBody
+          if (fs.existsSync(notePath)) {
+            releaseBody = fs.readFileSync(notePath, 'utf8')
+            console.log(`已读取发布说明: ${notePath}`)
+          } else {
+            console.log(`未找到发布说明文件 ${notePath}，本次不更新 Release body`)
           }
           ;(async () => {
             const listRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers })
@@ -89,14 +100,19 @@ jobs:
               console.log(`未找到 ${tag} 的 Release，跳过（可能已是正式版或创建失败）`)
               return
             }
-            if (!rel.draft) {
-              console.log(`${tag} 已是正式发布，跳过`)
+            // 已经是正式版时，仍需补齐缺失的发布说明。
+            const needsBody = !!releaseBody && (!rel.body || !rel.body.trim())
+            if (!rel.draft && !needsBody) {
+              console.log(`${tag} 已是正式发布且已有发布说明，跳过`)
               return
             }
+            const patchPayload = {}
+            if (rel.draft) patchPayload.draft = false
+            if (needsBody) patchPayload.body = releaseBody
             const patchRes = await fetch(`https://api.github.com/repos/${repo}/releases/${rel.id}`, {
               method: 'PATCH',
               headers,
-              body: JSON.stringify({ draft: false }),
+              body: JSON.stringify(patchPayload),
             })
             const patched = await patchRes.json()
             if (!patchRes.ok) {
