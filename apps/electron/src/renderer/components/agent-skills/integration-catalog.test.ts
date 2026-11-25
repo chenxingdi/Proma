@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { MCP_INTEGRATION_CATALOG, compareCatalogConnectionCards, type CatalogCredentialIntegration } from './integration-catalog'
+import { MCP_INTEGRATION_CATALOG, compareCatalogConnectionCards, resolveCatalogOAuthPrerequisite, type CatalogCredentialIntegration } from './integration-catalog'
 
 function credentialIntegration(id: string): CatalogCredentialIntegration {
   const integration = MCP_INTEGRATION_CATALOG.find((item) => item.id === id)
@@ -42,4 +42,27 @@ test('搜索服务目录顺序固定为飞书、钉钉、企业微信、Tavily�
     .map((integration) => integration.id)
 
   expect(actual.slice(0, expected.length)).toEqual(expected)
+})
+
+test('Given 服务端要求 Client Secret 且本机尚未保存 When 判断 OAuth 前置条件 Then 必须先让用户安全录入', () => {
+  // GitHub 远程 MCP 属于这一类：不提供 dynamic client registration。
+  expect(resolveCatalogOAuthPrerequisite({ clientSecretRequired: true, hasStoredClientSecret: false }))
+    .toBe('need-client-secret')
+})
+
+test('Given 服务端要求 Client Secret 且本机已保存 When 判断 OAuth 前置条件 Then 可以直接授权', () => {
+  expect(resolveCatalogOAuthPrerequisite({ clientSecretRequired: true, hasStoredClientSecret: true }))
+    .toBe('authorize')
+})
+
+test('Given 服务端不要求 Client Secret When 判断 OAuth 前置条件 Then 可以直接授权', () => {
+  expect(resolveCatalogOAuthPrerequisite({ clientSecretRequired: false, hasStoredClientSecret: false }))
+    .toBe('authorize')
+})
+
+test('Given 目录中的 GitHub 卡片 When 读取 OAuth 元数据 Then 要求 Client Secret 且不带 registrationEndpoint', () => {
+  const github = MCP_INTEGRATION_CATALOG.find((item) => item.id === 'github-mcp')
+  if (!github || github.kind !== 'mcp') throw new Error('missing github catalog integration')
+  expect(github.entry.oauth?.clientSecretRequired).toBe(true)
+  expect(github.entry.oauth?.registrationEndpoint).toBeUndefined()
 })

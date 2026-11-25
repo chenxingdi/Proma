@@ -13,6 +13,7 @@ import type { McpOAuthConfiguration, McpOAuthProvider, McpOAuthStartResult, Star
 import { getMcpOAuthCredentialsPath } from './config-paths'
 import { writeJsonFileAtomic } from './safe-file'
 import { runWithOAuthProxyScope } from './oauth-proxy-scope'
+import { credentialProvidesClientSecret } from './mcp-oauth-credential-match'
 
 const CALLBACK_PATH = '/callback'
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000
@@ -408,6 +409,23 @@ export function saveMcpOAuthClientSecret(input: {
     serverUrl: normalizeMcpResource(input.serverUrl),
     clientSecret: input.clientSecret.trim(),
   })
+}
+
+/**
+ * 判断某个远程 MCP 是否已经保存了匹配该 serverUrl 的 OAuth Client Secret。
+ *
+ * 渲染进程需要用它决定"直接授权"还是"先请用户保存 Secret"。必须由主进程回答：
+ * 只有主进程能解密 Keychain 凭据，而渲染进程的内存标记在重启后会丢失。
+ */
+export function hasMcpOAuthClientSecret(workspaceSlug: string, serverName: string, serverUrl: string): boolean {
+  const credential = readCredential(workspaceSlug, serverName)
+  if (!credential) return false
+  // 静态 API Key 是另一种凭据形态，不能当作 OAuth client secret 使用。
+  if (isMcpApiKeyCredential(credential)) return false
+  return credentialProvidesClientSecret(
+    { serverUrl: credential.serverUrl, hasClientSecret: Boolean(credential.clientSecret) },
+    serverUrl,
+  )
 }
 
 export function deleteMcpCredential(workspaceSlug: string, serverName: string): void {

@@ -185,6 +185,23 @@ const providerSetupPrompt = (name: string, setupUrl: string, authentication: str
 4. 若官方接入要求企业应用审核、管理员授权、桌面客户端登录或没有公开的 MCP 合约，停止在安全步骤处，说明已核验的事实、缺失条件和用户需要完成的操作。
 5. 完成后测试 MCP 连接；仅在测试成功时启用。${MCP_CREDENTIAL_SETUP_INSTRUCTION}${GUIDED_CONNECTION_ACCEPTANCE_INSTRUCTION}`
 
+/**
+ * 目录卡片与「我的 MCP」共用同一条 OAuth 前置判断。
+ *
+ * 返回 'authorize' 表示可以直接发起浏览器授权；返回 'need-client-secret'
+ * 表示服务端要求 Client Secret 而本机尚未保存，必须先请用户安全录入。
+ *
+ * 背景：GitHub 远程 MCP 不提供 dynamic client registration，缺 Client Secret
+ * 时直接授权会被服务端拒绝，卡片必须能在授权前拦下并引导用户录入。
+ */
+export function resolveCatalogOAuthPrerequisite(input: {
+  clientSecretRequired: boolean
+  hasStoredClientSecret: boolean
+}): 'authorize' | 'need-client-secret' {
+  if (input.clientSecretRequired && !input.hasStoredClientSecret) return 'need-client-secret'
+  return 'authorize'
+}
+
 export function buildCatalogMcpGuidePrompt(integration: CatalogMcpIntegration): string {
   const mcpUrl = integration.entry.type === 'http' || integration.entry.type === 'sse' ? integration.entry.url : '请根据官方文档核验'
   return `请帮我配置「${integration.name}」远程 MCP。

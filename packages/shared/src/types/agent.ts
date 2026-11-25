@@ -1066,6 +1066,13 @@ export interface SaveMcpOAuthClientSecretInput {
   clientSecret: string
 }
 
+/** Renderer-to-main query for an already-stored OAuth client secret; never returns the secret. */
+export interface HasMcpOAuthClientSecretInput {
+  workspaceSlug: string
+  serverName: string
+  serverUrl: string
+}
+
 /** OAuth connection result that deliberately excludes all secret material. */
 export interface McpOAuthStartResult {
   provider: McpOAuthProvider
@@ -1911,6 +1918,8 @@ export const AGENT_IPC_CHANNELS = {
   START_MCP_OAUTH: 'agent:start-mcp-oauth',
   /** 将 OAuth client secret 加密保存到系统 Keychain。 */
   SAVE_MCP_OAUTH_CLIENT_SECRET: 'agent:save-mcp-oauth-client-secret',
+  /** 查询某个 MCP 是否已保存 OAuth client secret；只返回布尔，不返回凭据。 */
+  HAS_MCP_OAUTH_CLIENT_SECRET: 'agent:has-mcp-oauth-client-secret',
   /** 安全保存远程 MCP 的静态 API Key / Token */
   SAVE_MCP_API_KEY: 'agent:save-mcp-api-key',
   /** 删除工作区 MCP 对应的系统安全凭据，不返回任何凭据。 */

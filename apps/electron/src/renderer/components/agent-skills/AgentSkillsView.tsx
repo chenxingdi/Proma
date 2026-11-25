@@ -41,7 +41,7 @@ import { groupSkills } from './skillGrouping'
 import { EMBEDDED_CATALOG_TWO_COLUMN_MIN_WIDTH, IntegrationCatalog } from './IntegrationCatalog'
 import { CredentialDialog } from './CredentialDialog'
 import { OAuthClientSecretDialog } from './OAuthClientSecretDialog'
-import { buildCatalogMcpGuidePrompt, MCP_INTEGRATION_CATALOG, getCatalogServerNames, isCatalogIntegrationVisible, matchesCatalogSearch, type CatalogCliIntegration, type CatalogCliProbeState, type CatalogCredentialIntegration, type CatalogGuidedIntegration, type CatalogMcpIntegration } from './integration-catalog'
+import { buildCatalogMcpGuidePrompt, MCP_INTEGRATION_CATALOG, getCatalogServerNames, isCatalogIntegrationVisible, matchesCatalogSearch, resolveCatalogOAuthPrerequisite, type CatalogCliIntegration, type CatalogCliProbeState, type CatalogCredentialIntegration, type CatalogGuidedIntegration, type CatalogMcpIntegration } from './integration-catalog'
 
 const embeddedMcpSectionContainerQuery = `
   @container (min-width: ${EMBEDDED_CATALOG_TWO_COLUMN_MIN_WIDTH}) {
@@ -175,7 +175,6 @@ export function AgentSkillsView({
   const [installingCatalogMcpId, setInstallingCatalogMcpId] = React.useState<string | null>(null)
   const [pendingCredentialIntegration, setPendingCredentialIntegration] = React.useState<CatalogCredentialIntegration | null>(null)
   const [pendingOAuthClientSecret, setPendingOAuthClientSecret] = React.useState<{ name: string; entry: McpServerEntry } | null>(null)
-  const savedOAuthClientSecretsRef = React.useRef(new Set<string>())
 
   const selectSkill = React.useCallback((slug: string): void => {
     setSelectedSkillSlug(slug)
@@ -288,18 +287,35 @@ export function AgentSkillsView({
       setInstallingCatalogMcpId(integration.id)
       try {
         const existing = data.mcpConfig.servers[integration.serverName]
+        const configuredEntry = existing ?? integration.entry
+        const serverUrl = configuredEntry.type === 'http' || configuredEntry.type === 'sse'
+          ? configuredEntry.url
+          : integration.entry.url
+        if (!serverUrl) throw new Error('当前 MCP 缺少可授权的远程地址')
+        const oauth = configuredEntry.oauth ?? integration.entry.oauth
+        if (oauth && !oauth.clientId && !oauth.registrationEndpoint) {
+          throw new Error('OAuth 配置缺少公开 clientId 或 registrationEndpoint；请让 Agent 根据官方文档补全后再授权')
+        }
+        // 先落配置再判断 Secret：对话框保存后的回调直接走授权 + 启用，
+        // 配置不存在时 setMcpEnabledAndValidate 会失败。
         if (!existing) {
           const installed = await data.installMcp(integration.serverName, integration.entry)
           if (!installed) return
         }
-        const configuredEntry = data.mcpConfig.servers[integration.serverName]
-        const serverUrl = configuredEntry?.type === 'http' || configuredEntry?.type === 'sse'
-          ? configuredEntry.url
-          : integration.entry.url
-        if (!serverUrl) throw new Error('当前 MCP 缺少可授权的远程地址')
-        const oauth = configuredEntry?.oauth ?? integration.entry.oauth
-        if (oauth && !oauth.clientId && !oauth.registrationEndpoint) {
-          throw new Error('OAuth 配置缺少公开 clientId 或 registrationEndpoint；请让 Agent 根据官方文档补全后再授权')
+        // 目录卡片必须和「我的 MCP」共用同一条 OAuth 前置流程：需要 Client Secret 的服务端
+        // （例如 GitHub 远程 MCP，它不提供 dynamic client registration）在缺 Secret 时直接
+        // 发起授权必然失败，这里先弹出安全保存对话框，保存后由对话框回调继续授权。
+        if (oauth?.clientSecretRequired) {
+          const hasStoredClientSecret = await window.electronAPI.hasMcpOAuthClientSecret({
+            workspaceSlug: data.workspaceSlug,
+            serverName: integration.serverName,
+            serverUrl,
+          })
+          const prerequisite = resolveCatalogOAuthPrerequisite({ clientSecretRequired: true, hasStoredClientSecret })
+          if (prerequisite === 'need-client-secret') {
+            setPendingOAuthClientSecret({ name: integration.serverName, entry: configuredEntry })
+            return
+          }
         }
         await window.electronAPI.startMcpOAuth({
           workspaceSlug: data.workspaceSlug,
@@ -350,9 +366,17 @@ export function AgentSkillsView({
       toast.error('OAuth 参数待补全', { description: '请让 Agent 根据官方文档写入公开 clientId 或 registrationEndpoint；token 和 client secret 不会写入配置。' })
       return
     }
-    if (entry.oauth.clientSecretRequired && !savedOAuthClientSecretsRef.current.has(name)) {
-      setPendingOAuthClientSecret({ name, entry })
-      return
+    if (entry.oauth.clientSecretRequired) {
+      const hasStoredClientSecret = await window.electronAPI.hasMcpOAuthClientSecret({
+        workspaceSlug: data.workspaceSlug,
+        serverName: name,
+        serverUrl: entry.url,
+      })
+      const prerequisite = resolveCatalogOAuthPrerequisite({ clientSecretRequired: true, hasStoredClientSecret })
+      if (prerequisite === 'need-client-secret') {
+        setPendingOAuthClientSecret({ name, entry })
+        return
+      }
     }
     setInstallingCatalogMcpId(`oauth:${name}`)
     try {
@@ -828,7 +852,6 @@ export function AgentSkillsView({
             serverUrl: pending.entry.url,
             clientSecret,
           })
-          savedOAuthClientSecretsRef.current.add(pending.name)
           // 先关闭秘密输入弹窗，再由同一张 MCP 卡片继续用户显式的浏览器授权。
           queueMicrotask(() => { void authorizeMcp(pending.name, pending.entry) })
         }}

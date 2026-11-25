@@ -735,6 +735,9 @@ export interface ElectronAPI {
   /** 将 OAuth client secret 加密保存到系统 Keychain；不会回传给渲染器或 Agent。 */
   saveMcpOAuthClientSecret: (input: import('@proma/shared').SaveMcpOAuthClientSecretInput) => Promise<void>
 
+  /** 查询是否已保存匹配该 serverUrl 的 OAuth client secret；只返回布尔。 */
+  hasMcpOAuthClientSecret: (input: import('@proma/shared').HasMcpOAuthClientSecretInput) => Promise<boolean>
+
   /** 将静态 MCP API Key / Token 加密保存到系统 Keychain。 */
   saveMcpApiKey: (input: import('@proma/shared').SaveMcpApiKeyInput) => Promise<void>
 
@@ -2104,6 +2107,10 @@ const electronAPI: ElectronAPI = {
 
   saveMcpOAuthClientSecret: (input: import('@proma/shared').SaveMcpOAuthClientSecretInput) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.SAVE_MCP_OAUTH_CLIENT_SECRET, input)
+  },
+
+  hasMcpOAuthClientSecret: (input: import('@proma/shared').HasMcpOAuthClientSecretInput) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.HAS_MCP_OAUTH_CLIENT_SECRET, input) as Promise<boolean>
   },
 
   saveMcpApiKey: (input: import('@proma/shared').SaveMcpApiKeyInput) => {
