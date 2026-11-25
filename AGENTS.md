@@ -27,13 +27,21 @@ bun run typecheck
 bun test
 
 # 打包（apps/electron 内）
+# 仅 GitHub Actions 使用；本机不要执行，见下方「编译与发布」
 bun run dist:mac
 bun run dist:win
 bun run dist:linux
 bun run dist:fast
 ```
 
-对单一变更优先运行最小相关测试，再运行 `bun run typecheck`。改运行时依赖、external 清单或打包规则后，至少运行 `bun run electron:build`；涉及发布产物时运行目标平台的打包冒烟验证。
+对单一变更优先运行最小相关测试，再运行 `bun run typecheck`。
+
+### 编译与发布：只用 GitHub Actions
+
+- **本机不搭建、不修复、也不依赖本地打包环境**。不要执行 `dist:*` / `pack` / `electron-builder`，也不要为打包需求去装 Electron、node-gyp、Visual Studio Build Tools 或重建 node-pty。打包产物只由 GitHub Actions 的 `Release` workflow 生成。
+- `.github/workflows/release.yml` 由推送 `v*` tag 触发，构建 Windows x64 并发布到 GitHub Releases。
+- 需要产出可安装版本时，流程是：递增版本号 → 提交并推送分支 → 打 `v<version>` tag 并推送 → 等 workflow 成功 → 核对 Release 资产。
+- 本机只做轻量验证：`bun test`、`bun run typecheck`，以及必要的 `build:main` / `build:preload` / `build:renderer`（它们只跑 esbuild/vite，不涉及原生打包）。
 
 ## 目录与边界
 
@@ -77,3 +85,14 @@ release-notes/                    版本发布日志
 - `apps/electron/package.json` 是桌面应用版本；`packages/*/package.json` 是各共享包版本；默认 Skill 改动还必须递增其 `SKILL.md` frontmatter 的 `version`。
 - 仅在功能行为、安装方式或用户流程发生变化时更新 README / tutorial / release notes；改文档前先取得用户授权。
 - 提交前检查 `git diff`，不要覆盖用户已有改动或提交无关文件。
+
+## 仓库同步与提交纪律
+
+本仓库是自托管 fork，远端为 `https://github.com/chenxingdi/Proma`。**本地改动必须立即提交并推送，不允许长期停留在工作区或本地分支。**
+
+- 完成一个可描述的改动单元后立即 `git commit`，随即 `git push origin <当前分支>`。不要攒多个不相关改动一次性提交，也不要只提交不推送。
+- 结束一轮工作前确认 `git status` 干净、当前分支与远端同步（`git status -sb` 无 ahead/behind 偏离）。若有未推送提交，立即推送。
+- 提交信息用中文，说明「为什么改」而不只是「改了什么」；保持一个提交内聚，不混入无关文件。
+- 编译产物、`dist/`、`out/` 和 `node_modules/` 不提交。若发现误入暂存区，先移除再提交。
+- 发布版本时，提交与 tag 都推送到远端后再等待 workflow；tag 名固定为 `v<apps/electron 的 version>`，且必须与之一致。
+- 不要对已推送的提交做 rebase / amend / force-push，除非用户当次明确要求；历史已共享。
