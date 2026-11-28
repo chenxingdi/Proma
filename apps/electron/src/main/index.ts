@@ -87,6 +87,7 @@ import { browserController } from './lib/browser-controller'
 import { markRunningDelegationsAsInterrupted } from './lib/agent-session-manager'
 import { stopAllGenerations } from './lib/chat-service'
 import { configureUpdater, initAutoUpdater, cleanupUpdater } from './lib/updater/auto-updater'
+import { checkAndUpdateCuaDriver } from './lib/cua-driver/cua-driver-cli'
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from './lib/workspace-watcher'
 import { startChatToolsWatcher, stopChatToolsWatcher } from './lib/chat-tools-watcher'
 import { getIsQuitting, setQuitting } from './lib/app-lifecycle'
@@ -816,6 +817,13 @@ async function bootstrap(): Promise<void> {
     configureUpdater(mainWindow, { hasActiveAgents: hasActiveAgentSessions })
     safeRun('initAutoUpdater', () => initAutoUpdater(mainWindow!))
   }
+
+  // Cua Driver：软件启动时即检查桌面操作驱动更新（发现新版自动安装），失败隔离不阻断启动。
+  safeRun('checkAndUpdateCuaDriver', () => {
+    void checkAndUpdateCuaDriver().catch((error) => {
+      console.error('[Cua Driver] 启动自动更新检查失败:', error)
+    })
+  })
 
   // 预创建快速任务窗口（隐藏状态，首次唤起秒开）
   safeRun('createQuickTaskWindow', createQuickTaskWindow)

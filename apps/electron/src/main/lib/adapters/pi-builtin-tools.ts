@@ -1641,14 +1641,9 @@ export async function buildPiBuiltinTools(
     console.error('[Pi 桥接] 注入 Windows Shell 安装工具失败:', error)
   }
 
-  // Cua Driver：注入手动检查工具，并在发现新版本时主动发起更新（发现即更新）。
+  // Cua Driver：仅注入手动检查工具；自动更新检查已在应用启动时统一执行。
   try {
     tools.push(...buildCuaDriverTools(sdk))
-    if (ctx.triggeredBy !== 'delegation') {
-      void checkAndUpdateCuaDriver().catch((error) => {
-        console.error('[Cua Driver] 自动更新检查失败:', error)
-      })
-    }
   } catch (error) {
     console.error('[Pi 桥接] 注入 Cua Driver 更新工具失败:', error)
   }
