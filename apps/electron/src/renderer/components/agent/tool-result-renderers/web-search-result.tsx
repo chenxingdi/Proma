@@ -4,11 +4,14 @@
 
 import * as React from 'react'
 import { Globe } from 'lucide-react'
+import type { WebImageResult } from '@proma/shared'
 import { CollapsibleResult } from './collapsible-result'
+import { WebImageGallery } from './web-image-gallery'
 
 interface WebSearchResultRendererProps {
   result: string
   isError: boolean
+  images?: WebImageResult[]
 }
 
 interface SearchResult {
@@ -59,7 +62,7 @@ function parseSearchResults(text: string): SearchResult[] | null {
   return results.length > 0 ? results : null
 }
 
-export function WebSearchResultRenderer({ result, isError }: WebSearchResultRendererProps): React.ReactElement {
+export function WebSearchResultRenderer({ result, isError, images }: WebSearchResultRendererProps): React.ReactElement {
   if (isError) {
     return (
       <pre className="rounded-md p-3 text-[12px] font-mono text-destructive/80 bg-destructive/5 whitespace-pre-wrap break-all overflow-x-auto">
@@ -89,6 +92,7 @@ export function WebSearchResultRenderer({ result, isError }: WebSearchResultRend
       <div className="text-[11px] text-muted-foreground/60">
         {searchResults.length} 条结果
       </div>
+      {images && images.length > 0 && <WebImageGallery images={images} />}
       {searchResults.map((item, i) => (
         <div key={i} className="rounded-md bg-muted/20 p-2.5 space-y-1">
           <div className="flex items-center gap-1.5">

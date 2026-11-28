@@ -11,7 +11,7 @@
  */
 
 import type { ToolCall, ToolResult, ToolDefinition } from '@proma/core'
-import type { ChatToolParam } from '@proma/shared'
+import type { ChatToolParam, WebImageResult } from '@proma/shared'
 
 /** 联网工具在 chat-tools.json 中的配置/凭据键（两个工具共用一份） */
 export const WEB_TOOL_CREDENTIAL_ID = 'web-search'
@@ -32,6 +32,8 @@ const EXTRACT_TIMEOUT_MS = 45_000
 const MAX_SEARCH_RESULTS = 8
 const MAX_SNIPPET_CHARS = 600
 const MAX_EXTRACT_CHARS = 20_000
+/** 联网工具附带图片的上限：只展示来源网页明确给出的图片 */
+const MAX_WEB_IMAGES = 8
 
 // ===== 工具定义 =====
 
@@ -88,7 +90,7 @@ export const WEB_TOOLS_SYSTEM_PROMPT_APPEND = `
 - 需要结论可靠时交叉核对两个以上来源，冲突时说明分歧而不是只挑一个。
 - 拿到搜索结果后，关键结论要读原文（WebFetch）确认，不要只靠摘要下判断。
 - 引用时给出可点击的链接。搜不到就说明搜不到，不要编造。
-- 联网搜索成功后，系统会自动按同一关键词附带一组公开图片；不要为了图片重复调用图片搜索工具。
+- 联网结果若包含来自来源网页的图片，对话会自动展示；没有图片时不要猜测或额外搜图。
 - 这类联网任务你自己完成，不要建议用户切换到 Agent 模式。
 </web_tools>`
 
@@ -133,12 +135,14 @@ interface TavilySearchItem {
   title?: unknown
   url?: unknown
   content?: unknown
+  images?: unknown
 }
 
 interface TavilyExtractItem {
   url?: unknown
   title?: unknown
   raw_content?: unknown
+  images?: unknown
 }
 
 /**
@@ -203,6 +207,96 @@ function clampMaxResults(value: unknown, fallback = 5): number {
   return Math.max(1, Math.min(Math.floor(parsed), MAX_SEARCH_RESULTS))
 }
 
+// ===== 网页图片提取 =====
+
+/**
+ * 从 Tavily 返回的图片列表中提取可展示图片。
+ *
+ * 只接受 http(s) URL，并限制数量，避免把无关资源或过多图片塞进对话。
+ * 图片标题与来源沿用所在网页的标题和 URL；没有网页标题时回退到图片 URL 的末段。
+ */
+export function extractWebImages(
+  images: unknown,
+  source: { title?: unknown; url?: unknown },
+  limit = MAX_WEB_IMAGES,
+): WebImageResult[] {
+  if (!Array.isArray(images)) return []
+  const max = Math.max(1, Math.min(Math.trunc(limit) || MAX_WEB_IMAGES, MAX_WEB_IMAGES))
+  const results: WebImageResult[] = []
+  const seen = new Set<string>()
+  const sourceUrl = asText(source.url)
+  const sourceTitle = asText(source.title)
+
+  for (const entry of images) {
+    if (results.length >= max) break
+    const imageUrl = typeof entry === 'string'
+      ? entry.trim()
+      : asText((entry as { url?: unknown } | undefined)?.url)
+    if (!isHttpUrl(imageUrl) || seen.has(imageUrl)) continue
+    seen.add(imageUrl)
+    const description = typeof entry === 'object' && entry !== null
+      ? asText((entry as { description?: unknown }).description)
+      : ''
+    results.push({
+      title: description || sourceTitle || filenameFromUrl(imageUrl) || '网页图片',
+      thumbnailUrl: imageUrl,
+      originalUrl: imageUrl,
+      link: sourceUrl,
+      source: hostnameFromUrl(sourceUrl),
+    })
+  }
+  return results
+}
+
+/** 合并多个来源的图片并去重，只保留来源网页实际返回的图片。 */
+export function collectWebImages(
+  items: readonly { images?: unknown; title?: unknown; url?: unknown }[],
+  limit = MAX_WEB_IMAGES,
+): WebImageResult[] {
+  const results: WebImageResult[] = []
+  const seen = new Set<string>()
+  const max = Math.max(1, Math.min(Math.trunc(limit) || MAX_WEB_IMAGES, MAX_WEB_IMAGES))
+  for (const item of items) {
+    for (const image of extractWebImages(item.images, item, max - results.length)) {
+      if (seen.has(image.originalUrl)) continue
+      seen.add(image.originalUrl)
+      results.push(image)
+      if (results.length >= max) break
+    }
+    if (results.length >= max) break
+  }
+  return results
+}
+
+function isHttpUrl(value: string): boolean {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function filenameFromUrl(value: string): string {
+  try {
+    const pathname = new URL(value).pathname
+    const name = pathname.split('/').filter(Boolean).pop()
+    return name ? decodeURIComponent(name).slice(0, 120) : ''
+  } catch {
+    return ''
+  }
+}
+
+function hostnameFromUrl(value: string): string {
+  if (!value) return ''
+  try {
+    return new URL(value).hostname.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
 // ===== 执行 =====
 
 export interface WebToolContext {
@@ -257,6 +351,7 @@ async function runWebSearch(toolCall: ToolCall, context: WebToolContext): Promis
       search_depth: 'basic',
       include_answer: false,
       include_raw_content: false,
+      include_images: true,
     },
     context,
     SEARCH_TIMEOUT_MS,
@@ -266,6 +361,7 @@ async function runWebSearch(toolCall: ToolCall, context: WebToolContext): Promis
   return {
     toolCallId: toolCall.id,
     content: formatSearchResults(results, maxResults),
+    images: collectWebImages(results, maxResults),
   }
 }
 
@@ -281,6 +377,7 @@ async function runWebFetch(toolCall: ToolCall, context: WebToolContext): Promise
     {
       urls: [url],
       format: 'markdown',
+      include_images: true,
       ...(query ? { query } : {}),
     },
     context,
@@ -304,6 +401,7 @@ async function runWebFetch(toolCall: ToolCall, context: WebToolContext): Promise
   return {
     toolCallId: toolCall.id,
     content: formatExtractedPage(first, url),
+    images: collectWebImages(first ? [first] : [], MAX_WEB_IMAGES),
   }
 }
 

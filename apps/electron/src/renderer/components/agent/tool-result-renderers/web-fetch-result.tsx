@@ -5,15 +5,18 @@
  */
 
 import * as React from 'react'
+import type { WebImageResult } from '@proma/shared'
 import { MessageResponse } from '@/components/ai-elements/message'
 import { CollapsibleResult } from './collapsible-result'
+import { WebImageGallery } from './web-image-gallery'
 
 interface WebFetchResultRendererProps {
   result: string
   isError: boolean
+  images?: WebImageResult[]
 }
 
-export function WebFetchResultRenderer({ result, isError }: WebFetchResultRendererProps): React.ReactElement {
+export function WebFetchResultRenderer({ result, isError, images }: WebFetchResultRendererProps): React.ReactElement {
   if (isError) {
     return (
       <pre className="rounded-md p-3 text-[12px] font-mono text-destructive/80 bg-destructive/5 whitespace-pre-wrap break-all overflow-x-auto">
@@ -23,15 +26,18 @@ export function WebFetchResultRenderer({ result, isError }: WebFetchResultRender
   }
 
   return (
-    <CollapsibleResult
-      content={result}
-      threshold={5000}
-      previewLines={30}
-      renderContent={(text) => (
-        <div className="rounded-md bg-muted/20 p-3 overflow-x-auto text-[13px]">
-          <MessageResponse>{text}</MessageResponse>
-        </div>
-      )}
-    />
+    <div className="space-y-2">
+      {images && images.length > 0 && <WebImageGallery images={images} />}
+      <CollapsibleResult
+        content={result}
+        threshold={5000}
+        previewLines={30}
+        renderContent={(text) => (
+          <div className="rounded-md bg-muted/20 p-3 overflow-x-auto text-[13px]">
+            <MessageResponse>{text}</MessageResponse>
+          </div>
+        )}
+      />
+    </div>
   )
 }

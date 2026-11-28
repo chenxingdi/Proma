@@ -44,9 +44,9 @@ export function ToolResultRenderer({ toolName, input, result, isError, basePath,
     case 'Glob':
       return <GlobResultRenderer result={result} isError={isError} />
     case 'WebSearch':
-      return <WebSearchResultRenderer result={result} isError={isError} />
+      return <WebSearchResultRenderer result={result} isError={isError} images={images} />
     case 'WebFetch':
-      return <WebFetchResultRenderer result={result} isError={isError} />
+      return <WebFetchResultRenderer result={result} isError={isError} images={images} />
     case 'SerpApiImageSearch':
       return <ImageSearchResultRenderer images={images} result={result} isError={isError} />
     case 'TaskGet':

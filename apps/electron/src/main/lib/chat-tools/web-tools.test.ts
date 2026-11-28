@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  executeWebTool,
+  extractWebImages,
+  collectWebImages,
   WEB_FETCH_TOOL_NAME,
   WEB_SEARCH_API_KEY_ENV,
   WEB_SEARCH_TOOL_NAME,
@@ -113,5 +116,111 @@ describe('formatExtractedPage', () => {
   test('Given 超长正文 Then 截断到上限', () => {
     const text = formatExtractedPage({ raw_content: 'a'.repeat(50) }, 'https://e.com', 10)
     expect(text).toContain('内容已截断')
+  })
+})
+
+describe('extractWebImages', () => {
+  test('Given 网页返回图片 URL Then 只保留合法地址并关联来源网页', () => {
+    const images = extractWebImages(
+      ['https://img.example.com/a.jpg', 'javascript:alert(1)', 'https://img.example.com/a.jpg'],
+      { title: 'Example Page', url: 'https://example.com/page' },
+    )
+    expect(images).toHaveLength(1)
+    expect(images[0]?.title).toBe('Example Page')
+    expect(images[0]?.thumbnailUrl).toBe('https://img.example.com/a.jpg')
+    expect(images[0]?.link).toBe('https://example.com/page')
+    expect(images[0]?.source).toBe('example.com')
+  })
+
+  test('Given 图片对象带描述 Then 使用描述作为标题', () => {
+    const images = extractWebImages(
+      [{ url: 'https://img.example.com/b.png', description: '产品示意图' }],
+      { title: 'Example', url: 'https://www.example.com' },
+    )
+    expect(images[0]?.title).toBe('产品示意图')
+  })
+
+  test('Given 没有图片 Then 返回空数组', () => {
+    expect(extractWebImages(undefined, { url: 'https://example.com' })).toEqual([])
+    expect(extractWebImages([], { url: 'https://example.com' })).toEqual([])
+  })
+
+  test('Given 图片数量超过上限 Then 只保留前 N 张', () => {
+    const items = Array.from({ length: 12 }, (_, index) => `https://img.example.com/${index}.jpg`)
+    expect(extractWebImages(items, {}, 3)).toHaveLength(3)
+  })
+})
+
+describe('collectWebImages', () => {
+  test('Given 多个网页结果 Then 合并图片并去重', () => {
+    const images = collectWebImages([
+      { title: 'A', url: 'https://a.com', images: ['https://img.example.com/1.jpg'] },
+      { title: 'B', url: 'https://b.com', images: ['https://img.example.com/1.jpg', 'https://img.example.com/2.jpg'] },
+    ])
+    expect(images.map((image) => image.originalUrl)).toEqual([
+      'https://img.example.com/1.jpg',
+      'https://img.example.com/2.jpg',
+    ])
+    expect(images[0]?.source).toBe('a.com')
+    expect(images[1]?.source).toBe('b.com')
+  })
+})
+
+describe('executeWebTool 网页图片', () => {
+  test('Given WebSearch 返回 per-result images Then 请求带 include_images 且结果带 images', async () => {
+    let requestBody: Record<string, unknown> | undefined
+    const fetchFn = (async (_url: string, init: RequestInit) => {
+      requestBody = JSON.parse(String(init.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({
+        results: [{
+          title: 'NASA',
+          url: 'https://nasa.gov/article',
+          content: 'Article',
+          images: ['https://images.nasa.gov/photo.jpg'],
+        }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await executeWebTool(
+      { id: 'web-1', name: WEB_SEARCH_TOOL_NAME, arguments: { query: 'NASA' } },
+      { fetchFn, apiKey: 'tvly-test' },
+    )
+    expect(requestBody?.include_images).toBe(true)
+    expect(result.images?.[0]?.originalUrl).toBe('https://images.nasa.gov/photo.jpg')
+    expect(result.images?.[0]?.link).toBe('https://nasa.gov/article')
+  })
+
+  test('Given WebFetch 返回图片 Then 请求带 include_images 且结果带 images', async () => {
+    let requestBody: Record<string, unknown> | undefined
+    const fetchFn = (async (_url: string, init: RequestInit) => {
+      requestBody = JSON.parse(String(init.body)) as Record<string, unknown>
+      return new Response(JSON.stringify({
+        results: [{
+          url: 'https://example.com/article',
+          title: 'Article',
+          raw_content: '正文',
+          images: ['https://example.com/cover.jpg'],
+        }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof globalThis.fetch
+
+    const result = await executeWebTool(
+      { id: 'fetch-1', name: WEB_FETCH_TOOL_NAME, arguments: { url: 'https://example.com/article' } },
+      { fetchFn, apiKey: 'tvly-test' },
+    )
+    expect(requestBody?.include_images).toBe(true)
+    expect(result.images?.[0]?.originalUrl).toBe('https://example.com/cover.jpg')
+  })
+
+  test('Given 网页没有图片 Then 结果不携带 images', async () => {
+    const fetchFn = (async () => new Response(JSON.stringify({
+      results: [{ title: 'Text only', url: 'https://example.com', content: 'No images' }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof globalThis.fetch
+
+    const result = await executeWebTool(
+      { id: 'web-2', name: WEB_SEARCH_TOOL_NAME, arguments: { query: 'text only' } },
+      { fetchFn, apiKey: 'tvly-test' },
+    )
+    expect(result.images).toEqual([])
   })
 })
