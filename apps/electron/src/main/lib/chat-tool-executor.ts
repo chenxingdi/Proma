@@ -7,6 +7,8 @@
 
 import type { ToolCall, ToolResult } from '@proma/core'
 import type { WebContents } from 'electron'
+import type { ChatToolActivity } from '@proma/shared'
+import { randomUUID } from 'node:crypto'
 import { CHAT_IPC_CHANNELS } from '@proma/shared'
 import { isCustomHttpToolCall, executeHttpTool } from './chat-tools/http-tool-executor'
 import { isAgentRecommendToolCall, executeAgentRecommendTool } from './chat-tools/agent-recommend-tool'
@@ -22,8 +24,10 @@ import { getEffectiveProxyUrl } from './proxy-settings-service'
 import {
   executeSerpApiImageSearch,
   isSerpApiImageToolCall,
+  SERPAPI_IMAGE_TOOL_NAME,
 } from './chat-tools/serpapi-image-tool'
 import { getSerpApiKey } from './serpapi-settings-service'
+import { resolveAutoImageQuery } from './chat-tools/auto-image'
 
 /** 工具执行上下文 */
 export interface ToolExecutionContext {
@@ -31,6 +35,10 @@ export interface ToolExecutionContext {
   webContents: WebContents
   /** 对话 ID */
   conversationId: string
+  /** 自动附带图片等不回传给模型的工具活动，供主流程持久化 */
+  extraActivities?: ChatToolActivity[]
+  /** 本轮对话实际启用的工具 ID；未传时回落到配置文件开关 */
+  enabledToolIds?: string[]
 }
 
 /** 联网工具共用的请求环境（每次批量执行只解析一次） */
@@ -128,6 +136,56 @@ export async function executeToolCalls(
         input: tc.arguments,
         images: result.images,
       },
+    })
+  }
+
+  // 联网搜索成功后自动附带一组图片；进度与结果都挂在同一个图片搜索活动上。
+  const autoImageQuery = resolveAutoImageQuery(
+    toolCalls,
+    results,
+    context.enabledToolIds
+      ? context.enabledToolIds.includes(SERPAPI_IMAGE_TOOL_NAME)
+      : getChatToolsConfig().toolStates[SERPAPI_IMAGE_TOOL_NAME]?.enabled ?? false,
+    Boolean(getSerpApiKey()),
+  )
+  if (autoImageQuery) {
+    const toolCallId = `auto-${SERPAPI_IMAGE_TOOL_NAME}-${randomUUID()}`
+    const input = { query: autoImageQuery, limit: 4, _intent: '联网搜索自动附带图片' }
+    const autoStartActivity: ChatToolActivity = {
+      type: 'start',
+      toolName: SERPAPI_IMAGE_TOOL_NAME,
+      toolCallId,
+      input,
+    }
+    context.extraActivities?.push(autoStartActivity)
+    context.webContents.send(CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, {
+      conversationId: context.conversationId,
+      activity: autoStartActivity,
+    })
+    let imageResult: ToolResult
+    try {
+      const proxyUrl = await getEffectiveProxyUrl()
+      imageResult = await executeSerpApiImageSearch(
+        { id: toolCallId, name: SERPAPI_IMAGE_TOOL_NAME, arguments: input },
+        { apiKey: getSerpApiKey()!, fetchFn: getFetchFn(proxyUrl) },
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      imageResult = { toolCallId, content: `图片搜索未执行: ${message}`, isError: true }
+    }
+    const autoResultActivity: ChatToolActivity = {
+      type: 'result',
+      toolName: SERPAPI_IMAGE_TOOL_NAME,
+      toolCallId,
+      result: imageResult.content,
+      isError: imageResult.isError,
+      input,
+      images: imageResult.images,
+    }
+    context.extraActivities?.push(autoResultActivity)
+    context.webContents.send(CHAT_IPC_CHANNELS.STREAM_TOOL_ACTIVITY, {
+      conversationId: context.conversationId,
+      activity: autoResultActivity,
     })
   }
 

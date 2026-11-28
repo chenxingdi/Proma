@@ -355,10 +355,16 @@ export async function sendMessage(
       }
 
       // 执行工具调用（通过统一执行器）
+      const autoActivities: ChatToolActivity[] = []
       const toolResults = await executeToolCalls(toolCalls, {
         webContents,
         conversationId,
+        extraActivities: autoActivities,
+        enabledToolIds,
       })
+
+      // 自动附带图片等活动不回传给模型，但需要和本轮工具结果一起持久化。
+      accumulatedToolActivities.push(...autoActivities)
 
       // 累积工具结果到持久化数据
       for (const tc of toolCalls) {
