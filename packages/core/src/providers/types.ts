@@ -6,7 +6,7 @@
  * core 层不依赖 Electron / Node fs，通过注入函数访问平台能力。
  */
 
-import type { AgentThinkingLevel, ChatMessage, FileAttachment, ProviderType } from '@proma/shared'
+import type { AgentThinkingLevel, ChatMessage, FileAttachment, ProviderType, WebImageResult } from '@proma/shared'
 
 // ===== 图片附件数据 =====
 
@@ -71,6 +71,8 @@ export interface ToolResult {
   isError?: boolean
   /** 工具生成的附件（如生图工具的图片），附加到 assistant 消息展示 */
   generatedAttachments?: FileAttachment[]
+  /** 图片搜索工具返回的结构化图片，供 Chat 工具活动渲染为图片卡片 */
+  images?: WebImageResult[]
 }
 
 /**

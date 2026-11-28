@@ -305,6 +305,12 @@ export function getToolPhrase(toolName: string, input: Record<string, unknown>):
       return phrase('退出计划模式')
     }
 
+    case 'SerpApiImageSearch': {
+      const query = input.query
+      if (typeof query === 'string' && query.trim()) return phrase(`搜索图片 ${truncate(query, 60)}`)
+      return phrase('搜索图片')
+    }
+
     case 'generate_image': {
       const prompt = input.prompt
       if (typeof prompt === 'string') return phrase(`生成图片 ${truncate(prompt, 60)}`)

@@ -182,6 +182,7 @@ import type {
   AppSettings,
   QuickTaskSubmitInput,
   QuickTaskOpenSessionData,
+  SerpApiSettingsUpdate,
   VoiceDictationAudioChunkInput,
   VoiceDictationCommitInput,
   VoiceDictationCommitResult,
@@ -204,7 +205,7 @@ import type {
   TrayOpenAgentSessionData,
   NotificationSoundType,
 } from '../types'
-import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS } from '../types'
+import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS, SERPAPI_IPC_CHANNELS } from '../types'
 
 /**
  * 暴露给渲染进程的 API 接口定义
@@ -1247,6 +1248,10 @@ export interface ElectronAPI {
 
   // ===== 语音输入 =====
 
+  /** 获取 SerpAPI 脱敏设置 */
+  getSerpApiSettings: () => Promise<{ configured: boolean; keyHint: string; environmentConfigured: boolean }>
+  /** 更新 SerpAPI API Key（加密存储） */
+  updateSerpApiSettings: (updates: SerpApiSettingsUpdate) => Promise<{ configured: boolean; keyHint: string; environmentConfigured: boolean }>
   /** 获取语音输入设置 */
   getVoiceDictationSettings: () => Promise<VoiceDictationSettings>
   /** 更新语音输入设置 */
@@ -2902,6 +2907,16 @@ const electronAPI: ElectronAPI = {
     const listener = (_: unknown, data: QuickTaskOpenSessionData): void => callback(data)
     ipcRenderer.on('quick-task:open-session', listener)
     return () => { ipcRenderer.removeListener('quick-task:open-session', listener) }
+  },
+
+  // ===== SerpAPI 图片搜索 =====
+
+  getSerpApiSettings: () => {
+    return ipcRenderer.invoke(SERPAPI_IPC_CHANNELS.GET_SETTINGS)
+  },
+
+  updateSerpApiSettings: (updates: SerpApiSettingsUpdate) => {
+    return ipcRenderer.invoke(SERPAPI_IPC_CHANNELS.UPDATE_SETTINGS, updates)
   },
 
   // ===== 语音输入 =====

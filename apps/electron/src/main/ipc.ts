@@ -11,9 +11,10 @@ import { realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, PLANNING_CONFLICT_ERROR, MAX_ATTACHMENT_SIZE, isPromaPermissionMode, normalizePathForCompare, removeMcpServerFromConfig, TERMINAL_IPC_CHANNELS } from '@proma/shared'
-import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS, TRAY_IPC_CHANNELS } from '../types'
+import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS, TRAY_IPC_CHANNELS, SERPAPI_IPC_CHANNELS } from '../types'
 import type {
   QuickTaskSubmitInput,
+  SerpApiSettingsUpdate,
   VoiceDictationAudioChunkInput,
   VoiceDictationCommitInput,
   VoiceDictationCommitResult,
@@ -5500,6 +5501,24 @@ export function registerIpcHandlers(): void {
     async (): Promise<Record<string, boolean>> => {
       const { getGlobalShortcutRegistrationStatus } = await import('./lib/global-shortcut-service')
       return getGlobalShortcutRegistrationStatus()
+    }
+  )
+
+  // ===== SerpAPI 图片搜索 =====
+
+  ipcMain.handle(
+    SERPAPI_IPC_CHANNELS.GET_SETTINGS,
+    async () => {
+      const { getPublicSerpApiSettings } = await import('./lib/serpapi-settings-service')
+      return getPublicSerpApiSettings()
+    }
+  )
+
+  ipcMain.handle(
+    SERPAPI_IPC_CHANNELS.UPDATE_SETTINGS,
+    async (_, updates: SerpApiSettingsUpdate) => {
+      const { updateSerpApiSettings } = await import('./lib/serpapi-settings-service')
+      return updateSerpApiSettings(updates)
     }
   )
 

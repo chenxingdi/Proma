@@ -1,9 +1,23 @@
 import * as React from 'react'
-import { Eye, ShieldCheck } from 'lucide-react'
+import { Eye, ImagePlus, ShieldCheck } from 'lucide-react'
 import type { VisionRelaySettings as VisionRelaySettingsValue } from '@/types/settings'
 import { ModelSelector } from '@/components/chat/ModelSelector'
 import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
 import { SettingsCard, SettingsRow, SettingsSection } from './primitives'
+import { SettingsSecretInput } from './primitives/SettingsSecretInput'
+
+interface SerpApiPublicSettings {
+  configured: boolean
+  keyHint: string
+  environmentConfigured: boolean
+}
+
+const DEFAULT_SERPAPI_SETTINGS: SerpApiPublicSettings = {
+  configured: false,
+  keyHint: '',
+  environmentConfigured: false,
+}
 
 const DEFAULT_SETTINGS: VisionRelaySettingsValue = { enabled: false }
 
@@ -11,12 +25,46 @@ const DEFAULT_SETTINGS: VisionRelaySettingsValue = { enabled: false }
 export function VisionRelaySettings(): React.ReactElement {
   const [settings, setSettings] = React.useState<VisionRelaySettingsValue>(DEFAULT_SETTINGS)
   const [saving, setSaving] = React.useState(false)
+  const [serpApi, setSerpApi] = React.useState<SerpApiPublicSettings>(DEFAULT_SERPAPI_SETTINGS)
+  const [serpKeyDraft, setSerpKeyDraft] = React.useState('')
+  const [serpSaving, setSerpSaving] = React.useState(false)
 
   React.useEffect(() => {
     window.electronAPI.getSettings()
       .then((appSettings) => setSettings(appSettings.visionRelay ?? DEFAULT_SETTINGS))
       .catch(console.error)
+    window.electronAPI.getSerpApiSettings()
+      .then(setSerpApi)
+      .catch(console.error)
   }, [])
+
+  const saveSerpApiKey = async (): Promise<void> => {
+    const apiKey = serpKeyDraft.trim()
+    if (!apiKey) return
+    setSerpSaving(true)
+    try {
+      const result = await window.electronAPI.updateSerpApiSettings({ apiKey })
+      setSerpApi(result)
+      setSerpKeyDraft('')
+    } catch (error) {
+      console.error('[视觉助手设置] SerpAPI Key 保存失败:', error)
+    } finally {
+      setSerpSaving(false)
+    }
+  }
+
+  const clearSerpApiKey = async (): Promise<void> => {
+    setSerpSaving(true)
+    try {
+      const result = await window.electronAPI.updateSerpApiSettings({ apiKey: '' })
+      setSerpApi(result)
+      setSerpKeyDraft('')
+    } catch (error) {
+      console.error('[视觉助手设置] SerpAPI Key 清除失败:', error)
+    } finally {
+      setSerpSaving(false)
+    }
+  }
 
   const save = async (next: VisionRelaySettingsValue): Promise<void> => {
     const previous = settings
@@ -72,6 +120,53 @@ export function VisionRelaySettings(): React.ReactElement {
               })}
             />
           </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title="图片搜索"
+        description="为 Chat 模式接入 SerpAPI 的 Google Images 搜索，让 Agent 能按要求找出公开图片并在对话中展示。"
+      >
+        <SettingsCard>
+          <SettingsRow
+            label="SerpAPI 图片搜索"
+            icon={<ImagePlus className="size-4 text-sky-500" />}
+            description={serpApi.configured
+              ? `已加密保存（${serpApi.keyHint}）；Chat 工具「图片搜索」已可用。`
+              : serpApi.environmentConfigured
+                ? '已从环境变量 PROMA_SERPAPI_KEY 读取密钥；也可在此加密保存。'
+                : '在 serpapi.com 注册获取 API Key，保存后在 Chat 中启用「图片搜索」工具。'}
+          />
+          <SettingsSecretInput
+            label="SerpAPI API Key"
+            description="保存时通过系统密钥链加密；留空并保存不覆盖已有密钥。密钥只用于向 serpapi.com 发起图片搜索。"
+            value={serpKeyDraft}
+            onChange={setSerpKeyDraft}
+            placeholder={serpApi.configured ? '已保存；粘贴新 Key 可替换' : '输入 SerpAPI Key'}
+            disabled={serpSaving}
+          />
+          <div className="flex items-center justify-end gap-2 px-4 pb-3">
+            {serpApi.configured && (
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                disabled={serpSaving}
+                onClick={() => void clearSerpApiKey()}
+                className="text-[12px] text-muted-foreground hover:text-destructive"
+              >
+                清除已保存密钥
+              </Button>
+            )}
+            <Button
+              size="sm"
+              type="button"
+              disabled={serpSaving || !serpKeyDraft.trim()}
+              onClick={() => void saveSerpApiKey()}
+            >
+              {serpSaving ? '保存中…' : '保存密钥'}
+            </Button>
+          </div>
         </SettingsCard>
       </SettingsSection>
 

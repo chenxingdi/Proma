@@ -19,6 +19,11 @@ import {
 import { getChatToolsConfig } from './chat-tool-config'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
+import {
+  executeSerpApiImageSearch,
+  isSerpApiImageToolCall,
+} from './chat-tools/serpapi-image-tool'
+import { getSerpApiKey } from './serpapi-settings-service'
 
 /** 工具执行上下文 */
 export interface ToolExecutionContext {
@@ -74,6 +79,16 @@ export async function executeToolCalls(
 
     if (isAgentRecommendToolCall(tc.name)) {
       result = await executeAgentRecommendTool(tc)
+    } else if (isSerpApiImageToolCall(tc.name)) {
+      try {
+        const apiKey = getSerpApiKey()
+        if (!apiKey) throw new Error('未配置 SerpAPI Key，请在设置 → 视觉助手中填写')
+        const proxyUrl = await getEffectiveProxyUrl()
+        result = await executeSerpApiImageSearch(tc, { apiKey, fetchFn: getFetchFn(proxyUrl) })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        result = { toolCallId: tc.id, content: `${tc.name} 未执行: ${message}`, isError: true }
+      }
     } else if (isWebToolCall(tc.name)) {
       // 代理或密钥解析失败时只让这次工具调用失败，不中断整轮对话
       try {
@@ -111,6 +126,7 @@ export async function executeToolCalls(
         result: result.content,
         isError: result.isError,
         input: tc.arguments,
+        images: result.images,
       },
     })
   }

@@ -27,6 +27,14 @@ import {
   WEB_TOOL_CREDENTIAL_ID,
   isWebToolsAvailable,
 } from './chat-tools/web-tools'
+import {
+  SERPAPI_IMAGE_TOOL_DEFINITIONS,
+  SERPAPI_IMAGE_TOOL_NAME,
+  SERPAPI_IMAGE_TOOL_PARAMS,
+  SERPAPI_IMAGE_SYSTEM_PROMPT_APPEND,
+  SERPAPI_TOOL_CREDENTIAL_ID,
+} from './chat-tools/serpapi-image-tool'
+import { getSerpApiKey } from './serpapi-settings-service'
 
 // ===== 内置工具注册 =====
 
@@ -61,6 +69,16 @@ const WEB_FETCH_META: ChatToolMeta = {
   executorType: 'builtin',
 }
 
+const SERPAPI_IMAGE_META: ChatToolMeta = {
+  id: SERPAPI_IMAGE_TOOL_NAME,
+  name: '图片搜索',
+  description: '搜索公开图片，返回可展示的图片卡片与原图链接',
+  params: SERPAPI_IMAGE_TOOL_PARAMS,
+  icon: 'ImagePlus',
+  category: 'builtin',
+  executorType: 'builtin',
+}
+
 /** 所有内置工具 */
 const BUILTIN_TOOLS: BuiltinToolEntry[] = [
   {
@@ -78,6 +96,11 @@ const BUILTIN_TOOLS: BuiltinToolEntry[] = [
     getDefinitions: () => AGENT_RECOMMEND_TOOL_DEFINITIONS,
     checkAvailable: isAgentRecommendAvailable,
   },
+  {
+    meta: SERPAPI_IMAGE_META,
+    getDefinitions: () => SERPAPI_IMAGE_TOOL_DEFINITIONS,
+    checkAvailable: () => Boolean(getSerpApiKey()),
+  },
 ]
 
 /** 联网工具的凭据来源（与工具 id 不同时在此登记） */
@@ -89,6 +112,7 @@ const CREDENTIAL_SOURCE_BY_TOOL_ID: Record<string, string> = {
 /** 该系统提示词只在任意联网工具启用时注入一次 */
 const MERGED_SYSTEM_PROMPTS: Record<string, string> = {
   [WEB_TOOL_CREDENTIAL_ID]: WEB_TOOLS_SYSTEM_PROMPT_APPEND,
+  [SERPAPI_TOOL_CREDENTIAL_ID]: SERPAPI_IMAGE_SYSTEM_PROMPT_APPEND,
 }
 
 // ===== 自定义工具转换 =====

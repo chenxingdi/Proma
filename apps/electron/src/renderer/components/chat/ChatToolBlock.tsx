@@ -14,6 +14,7 @@ import * as React from 'react'
 import { ChevronRight, XCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getToolIcon, extractFilePath } from '@/components/agent/tool-utils'
+import type { WebImageResult } from '@proma/shared'
 import { getToolPhrase } from '@/components/agent/tool-phrase'
 import { ToolResultRenderer } from '@/components/agent/tool-result-renderers'
 import { PreviewOpenButton } from '@/components/agent/tool-result-renderers/preview-open-button'
@@ -26,6 +27,7 @@ export interface ChatToolBlockProps {
   isCompleted: boolean
   animate?: boolean
   index?: number
+  images?: WebImageResult[]
 }
 
 export function ChatToolBlock({
@@ -36,6 +38,7 @@ export function ChatToolBlock({
   isCompleted,
   animate = false,
   index = 0,
+  images,
 }: ChatToolBlockProps): React.ReactElement {
   const [expanded, setExpanded] = React.useState(false)
 
@@ -94,6 +97,7 @@ export function ChatToolBlock({
             input={input}
             result={result}
             isError={isError}
+            images={images}
           />
         </div>
       )}

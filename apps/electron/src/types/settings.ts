@@ -267,6 +267,15 @@ export interface VisionRelaySettings {
   modelId?: string
 }
 
+/** SerpAPI 图片搜索凭据（落盘时 apiKey 为 safeStorage 加密后的字符串） */
+export interface SerpApiSettings {
+  /** 加密后的 API Key；空字符串表示未配置 */
+  apiKey: string
+}
+
+/** SerpAPI 设置更新；apiKey 省略表示保留原值 */
+export type SerpApiSettingsUpdate = Partial<SerpApiSettings>
+
 /** 可在通用设置中关闭的本地生产力工具；缺省保持开启以兼容已有用户。 */
 export interface ProductivityToolsSettings {
   todosEnabled: boolean
@@ -357,6 +366,8 @@ export interface AppSettings {
   feishuSessionMirror?: FeishuSessionMirrorSettings
   /** 无视觉输入能力 Agent 的视觉助手路由 */
   visionRelay?: VisionRelaySettings
+  /** SerpAPI 图片搜索凭据（加密存储） */
+  serpApi?: SerpApiSettings
   /** 已确认的受管浏览器风险告知版本；低于当前版本时首次使用会再次要求确认。 */
   browserRiskDisclaimerVersion?: number
   /** Todo、日程与 Obsidian 的可见性和 Agent 工具注入开关，默认全部开启。 */
@@ -454,6 +465,12 @@ export const QUICK_TASK_IPC_CHANNELS = {
   REREGISTER_GLOBAL_SHORTCUTS: 'quick-task:reregister-global-shortcuts',
   /** 查询当前已成功注册的全局快捷键 */
   GET_GLOBAL_SHORTCUT_REGISTRATION_STATUS: 'quick-task:get-global-shortcut-registration-status',
+} as const
+
+/** SerpAPI 图片搜索设置的 IPC 通道；只返回脱敏信息 */
+export const SERPAPI_IPC_CHANNELS = {
+  GET_SETTINGS: 'serpapi:get-settings',
+  UPDATE_SETTINGS: 'serpapi:update-settings',
 } as const
 
 /** 语音输入 IPC 通道 */

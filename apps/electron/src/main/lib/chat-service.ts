@@ -371,6 +371,7 @@ export async function sendMessage(
             result: tr.content,
             isError: tr.isError,
             input: tc.arguments,
+            images: tr.images,
           })
           // 收集工具生成的附件（如生图工具的图片）
           if (tr.generatedAttachments) {

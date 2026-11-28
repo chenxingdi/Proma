@@ -9,7 +9,7 @@
 import * as React from 'react'
 import { ChevronRight } from 'lucide-react'
 import { ChatToolBlock } from './ChatToolBlock'
-import type { ChatToolActivity } from '@proma/shared'
+import type { ChatToolActivity, WebImageResult } from '@proma/shared'
 import { getToolIcon, getToolDisplayName } from '@/components/agent/tool-utils'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +20,7 @@ interface MergedActivity {
   isError?: boolean
   result?: string
   input: Record<string, unknown>
+  images?: WebImageResult[]
 }
 
 const MAX_TOOL_ICONS = 4
@@ -52,6 +53,7 @@ export function ChatToolActivityIndicator({
           isError: a.isError,
           result: a.result,
           input: a.input ?? existing?.input ?? {},
+          images: a.images ?? existing?.images,
         })
       }
     }
@@ -180,6 +182,7 @@ export function ChatToolActivityIndicator({
               isCompleted={item.done}
               animate={isStreaming}
               index={idx}
+              images={item.images}
             />
           ))}
         </div>

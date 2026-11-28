@@ -14,9 +14,11 @@ import { GrepResultRenderer } from './grep-result'
 import { GlobResultRenderer } from './glob-result'
 import { WebSearchResultRenderer } from './web-search-result'
 import { WebFetchResultRenderer } from './web-fetch-result'
+import { ImageSearchResultRenderer } from './image-search-result'
 import { TaskGetResultRenderer } from './task-get-result'
 import { TaskListResultRenderer } from './task-list-result'
 import { DefaultResultRenderer } from './default-result'
+import type { WebImageResult } from '@proma/shared'
 
 export interface ToolResultRendererProps {
   toolName: string
@@ -24,9 +26,10 @@ export interface ToolResultRendererProps {
   result: string
   isError: boolean
   basePath?: string
+  images?: WebImageResult[]
 }
 
-export function ToolResultRenderer({ toolName, input, result, isError, basePath }: ToolResultRendererProps): React.ReactElement {
+export function ToolResultRenderer({ toolName, input, result, isError, basePath, images }: ToolResultRendererProps): React.ReactElement {
   switch (toolName) {
     case 'Bash':
       return <BashResultRenderer result={result} isError={isError} input={input} />
@@ -44,6 +47,8 @@ export function ToolResultRenderer({ toolName, input, result, isError, basePath 
       return <WebSearchResultRenderer result={result} isError={isError} />
     case 'WebFetch':
       return <WebFetchResultRenderer result={result} isError={isError} />
+    case 'SerpApiImageSearch':
+      return <ImageSearchResultRenderer images={images} result={result} isError={isError} />
     case 'TaskGet':
       return <TaskGetResultRenderer result={result} isError={isError} />
     case 'TaskList':

@@ -302,6 +302,20 @@ export interface StreamErrorEvent {
 /**
  * Chat 工具活动（记忆工具调用状态）
  */
+/** SerpAPI 图片搜索返回的可展示图片信息 */
+export interface WebImageResult {
+  /** 图片标题 */
+  title: string
+  /** 用于卡片展示的缩略图 URL（SerpAPI 缓存或原图） */
+  thumbnailUrl: string
+  /** 原图 URL */
+  originalUrl: string
+  /** 来源页面 URL */
+  link: string
+  /** 来源站点名称 */
+  source: string
+}
+
 export interface ChatToolActivity {
   /** 工具调用 ID */
   toolCallId: string
@@ -315,6 +329,8 @@ export interface ChatToolActivity {
   isError?: boolean
   /** 工具调用参数（result 事件中携带，用于语义化短语和结构化结果渲染） */
   input?: Record<string, unknown>
+  /** 图片搜索工具返回的结构化图片（result 事件中携带，用于图片卡片展示） */
+  images?: WebImageResult[]
 }
 
 /**

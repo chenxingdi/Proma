@@ -16,6 +16,7 @@ const DEFAULT_CONFIG: ChatToolsFileConfig = {
     memory: { enabled: true },
     WebSearch: { enabled: true },
     WebFetch: { enabled: true },
+    SerpApiImageSearch: { enabled: true },
     'agent-mode-recommend': { enabled: true },
   },
   toolCredentials: {},
