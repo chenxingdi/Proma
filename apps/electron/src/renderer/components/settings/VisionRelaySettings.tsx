@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { Eye, ImagePlus, ShieldCheck } from 'lucide-react'
-import type { VisionRelaySettings as VisionRelaySettingsValue } from '@/types/settings'
+import type { VisionRelaySettings as VisionRelaySettingsValue, WebImageSource } from '@/types/settings'
 import { ModelSelector } from '@/components/chat/ModelSelector'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
-import { SettingsCard, SettingsRow, SettingsSection } from './primitives'
+import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from './primitives'
 import { SettingsSecretInput } from './primitives/SettingsSecretInput'
 
 interface SerpApiPublicSettings {
@@ -28,15 +28,30 @@ export function VisionRelaySettings(): React.ReactElement {
   const [serpApi, setSerpApi] = React.useState<SerpApiPublicSettings>(DEFAULT_SERPAPI_SETTINGS)
   const [serpKeyDraft, setSerpKeyDraft] = React.useState('')
   const [serpSaving, setSerpSaving] = React.useState(false)
+  const [webImageSource, setWebImageSource] = React.useState<WebImageSource>('tavily')
 
   React.useEffect(() => {
     window.electronAPI.getSettings()
-      .then((appSettings) => setSettings(appSettings.visionRelay ?? DEFAULT_SETTINGS))
+      .then((appSettings) => {
+        setSettings(appSettings.visionRelay ?? DEFAULT_SETTINGS)
+        setWebImageSource(appSettings.webImageSource === 'serpapi' ? 'serpapi' : 'tavily')
+      })
       .catch(console.error)
     window.electronAPI.getSerpApiSettings()
       .then(setSerpApi)
       .catch(console.error)
   }, [])
+
+  const saveWebImageSource = async (source: WebImageSource): Promise<void> => {
+    const previous = webImageSource
+    setWebImageSource(source)
+    try {
+      await window.electronAPI.updateSettings({ webImageSource: source })
+    } catch (error) {
+      console.error('[视觉助手设置] 图片来源服务保存失败:', error)
+      setWebImageSource(previous)
+    }
+  }
 
   const saveSerpApiKey = async (): Promise<void> => {
     const apiKey = serpKeyDraft.trim()
@@ -125,9 +140,19 @@ export function VisionRelaySettings(): React.ReactElement {
 
       <SettingsSection
         title="图片搜索"
-        description="为 Chat 模式接入 SerpAPI 的 Google Images 搜索，让 Agent 能按要求找出公开图片并在对话中展示。"
+        description="选择联网结果自动配图使用的服务；SerpAPI 也可作为 Chat 中显式调用的图片搜索工具。"
       >
         <SettingsCard>
+          <SettingsSelect
+            label="图片来源服务"
+            description="Tavily 使用来源网页中实际提取的图片；SerpAPI 在检测到来源网页含图后按同一关键词补充图片。两者都不会在无图网页中强行配图。"
+            value={webImageSource}
+            onValueChange={(value) => void saveWebImageSource(value === 'serpapi' ? 'serpapi' : 'tavily')}
+            options={[
+              { value: 'tavily', label: 'Tavily' },
+              { value: 'serpapi', label: 'SerpAPI' },
+            ]}
+          />
           <SettingsRow
             label="SerpAPI 图片搜索"
             icon={<ImagePlus className="size-4 text-sky-500" />}

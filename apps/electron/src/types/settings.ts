@@ -267,6 +267,9 @@ export interface VisionRelaySettings {
   modelId?: string
 }
 
+/** 联网结果自动配图使用的服务 */
+export type WebImageSource = 'tavily' | 'serpapi'
+
 /** SerpAPI 图片搜索凭据（落盘时 apiKey 为 safeStorage 加密后的字符串） */
 export interface SerpApiSettings {
   /** 加密后的 API Key；空字符串表示未配置 */
@@ -368,6 +371,8 @@ export interface AppSettings {
   visionRelay?: VisionRelaySettings
   /** SerpAPI 图片搜索凭据（加密存储） */
   serpApi?: SerpApiSettings
+  /** 联网结果自动配图的服务，默认 tavily */
+  webImageSource?: WebImageSource
   /** 已确认的受管浏览器风险告知版本；低于当前版本时首次使用会再次要求确认。 */
   browserRiskDisclaimerVersion?: number
   /** Todo、日程与 Obsidian 的可见性和 Agent 工具注入开关，默认全部开启。 */
