@@ -7,7 +7,7 @@
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, CUA_DRIVER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
-import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS, WEB_IMAGE_SERVICE_IPC_CHANNELS } from '../types'
+import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
   GitRepoStatus,
@@ -182,7 +182,6 @@ import type {
   AppSettings,
   QuickTaskSubmitInput,
   QuickTaskOpenSessionData,
-  SerpApiSettingsUpdate,
   VoiceDictationAudioChunkInput,
   VoiceDictationCommitInput,
   VoiceDictationCommitResult,
@@ -205,7 +204,7 @@ import type {
   TrayOpenAgentSessionData,
   NotificationSoundType,
 } from '../types'
-import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS, SERPAPI_IPC_CHANNELS } from '../types'
+import { QUICK_TASK_IPC_CHANNELS, TRAY_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS } from '../types'
 
 /**
  * 暴露给渲染进程的 API 接口定义
@@ -1248,16 +1247,6 @@ export interface ElectronAPI {
 
   // ===== 语音输入 =====
 
-  /** 获取图片来源服务（Tavily/SerpAPI）的脱敏凭据状态 */
-  getWebImageServiceSettings: () => Promise<Record<'tavily' | 'serpApi', { configured: boolean; keyHint: string; environmentConfigured: boolean }>>
-  /** 更新图片来源服务的 API Key；空字符串表示清除 */
-  updateWebImageServiceApiKey: (source: 'tavily' | 'serpapi', apiKey: string) => Promise<Record<'tavily' | 'serpApi', { configured: boolean; keyHint: string; environmentConfigured: boolean }>>
-  /** 测试图片来源服务的 API Key */
-  testWebImageServiceApiKey: (source: 'tavily' | 'serpapi', apiKey?: string) => Promise<{ success: boolean; message: string }>
-  /** 获取 SerpAPI 脱敏设置 */
-  getSerpApiSettings: () => Promise<{ configured: boolean; keyHint: string; environmentConfigured: boolean }>
-  /** 更新 SerpAPI API Key（加密存储） */
-  updateSerpApiSettings: (updates: SerpApiSettingsUpdate) => Promise<{ configured: boolean; keyHint: string; environmentConfigured: boolean }>
   /** 获取语音输入设置 */
   getVoiceDictationSettings: () => Promise<VoiceDictationSettings>
   /** 更新语音输入设置 */
@@ -2913,30 +2902,6 @@ const electronAPI: ElectronAPI = {
     const listener = (_: unknown, data: QuickTaskOpenSessionData): void => callback(data)
     ipcRenderer.on('quick-task:open-session', listener)
     return () => { ipcRenderer.removeListener('quick-task:open-session', listener) }
-  },
-
-  // ===== 图片来源服务凭据 =====
-
-  getWebImageServiceSettings: () => {
-    return ipcRenderer.invoke(WEB_IMAGE_SERVICE_IPC_CHANNELS.GET_SETTINGS)
-  },
-
-  updateWebImageServiceApiKey: (source: 'tavily' | 'serpapi', apiKey: string) => {
-    return ipcRenderer.invoke(WEB_IMAGE_SERVICE_IPC_CHANNELS.UPDATE_KEY, source, apiKey)
-  },
-
-  testWebImageServiceApiKey: (source: 'tavily' | 'serpapi', apiKey?: string) => {
-    return ipcRenderer.invoke(WEB_IMAGE_SERVICE_IPC_CHANNELS.TEST_CONNECTION, source, apiKey)
-  },
-
-  // ===== SerpAPI 图片搜索 =====
-
-  getSerpApiSettings: () => {
-    return ipcRenderer.invoke(SERPAPI_IPC_CHANNELS.GET_SETTINGS)
-  },
-
-  updateSerpApiSettings: (updates: SerpApiSettingsUpdate) => {
-    return ipcRenderer.invoke(SERPAPI_IPC_CHANNELS.UPDATE_SETTINGS, updates)
   },
 
   // ===== 语音输入 =====

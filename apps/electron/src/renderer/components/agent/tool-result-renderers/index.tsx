@@ -14,7 +14,6 @@ import { GrepResultRenderer } from './grep-result'
 import { GlobResultRenderer } from './glob-result'
 import { WebSearchResultRenderer } from './web-search-result'
 import { WebFetchResultRenderer } from './web-fetch-result'
-import { ImageSearchResultRenderer } from './image-search-result'
 import { TaskGetResultRenderer } from './task-get-result'
 import { TaskListResultRenderer } from './task-list-result'
 import { DefaultResultRenderer } from './default-result'
@@ -47,8 +46,6 @@ export function ToolResultRenderer({ toolName, input, result, isError, basePath,
       return <WebSearchResultRenderer result={result} isError={isError} images={images} />
     case 'WebFetch':
       return <WebFetchResultRenderer result={result} isError={isError} images={images} />
-    case 'SerpApiImageSearch':
-      return <ImageSearchResultRenderer images={images} result={result} isError={isError} />
     case 'TaskGet':
       return <TaskGetResultRenderer result={result} isError={isError} />
     case 'TaskList':

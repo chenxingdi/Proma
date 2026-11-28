@@ -19,13 +19,6 @@ import {
 import { getChatToolsConfig } from './chat-tool-config'
 import { getFetchFn } from './proxy-fetch'
 import { getEffectiveProxyUrl } from './proxy-settings-service'
-import {
-  executeSerpApiImageSearch,
-  isSerpApiImageToolCall,
-  SERPAPI_IMAGE_TOOL_NAME,
-} from './chat-tools/serpapi-image-tool'
-import { getSerpApiKey } from './serpapi-settings-service'
-import { getWebImageSource } from './web-image-source-service'
 
 /** 工具执行上下文 */
 export interface ToolExecutionContext {
@@ -55,16 +48,6 @@ async function resolveWebToolRuntime(): Promise<WebToolRuntime> {
   return { fetchFn: getFetchFn(proxyUrl), apiKey }
 }
 
-/** 为联网工具生成 SerpAPI 配图关键词；优先用显式 query，其次用网页地址。 */
-function webImageQueryOf(toolCall: ToolCall, result: ToolResult): string | undefined {
-  const query = typeof toolCall.arguments.query === 'string' ? toolCall.arguments.query.trim() : ''
-  if (query) return query
-  const title = result.content.match(/^标题:\s*(.+)$/m)?.[1]?.trim()
-  if (title) return title
-  const url = typeof toolCall.arguments.url === 'string' ? toolCall.arguments.url.trim() : ''
-  return url || undefined
-}
-
 /**
  * 执行工具调用列表
  *
@@ -91,43 +74,11 @@ export async function executeToolCalls(
 
     if (isAgentRecommendToolCall(tc.name)) {
       result = await executeAgentRecommendTool(tc)
-    } else if (isSerpApiImageToolCall(tc.name)) {
-      try {
-        const apiKey = getSerpApiKey()
-        if (!apiKey) throw new Error('未配置 SerpAPI Key，请在设置 → 视觉助手中填写')
-        const proxyUrl = await getEffectiveProxyUrl()
-        result = await executeSerpApiImageSearch(tc, { apiKey, fetchFn: getFetchFn(proxyUrl) })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        result = { toolCallId: tc.id, content: `${tc.name} 未执行: ${message}`, isError: true }
-      }
     } else if (isWebToolCall(tc.name)) {
       // 代理或密钥解析失败时只让这次工具调用失败，不中断整轮对话
       try {
         const runtime = await getWebRuntime()
         result = await executeWebTool(tc, runtime)
-        // 图片来源选 SerpAPI 时，只在 Tavily 检测到来源网页含图后替换图片源；
-        // 网页本身没有图片时不额外搜图，保持与 Tavily 路径一致。
-        if (!result.isError && result.images?.length && getWebImageSource() === 'serpapi') {
-          const apiKey = getSerpApiKey()
-          if (apiKey) {
-            const query = webImageQueryOf(tc, result)
-            if (query) {
-              try {
-                const proxyUrl = await getEffectiveProxyUrl()
-                const serpResult = await executeSerpApiImageSearch(
-                  { id: tc.id, name: SERPAPI_IMAGE_TOOL_NAME, arguments: { query, limit: result.images.length } },
-                  { apiKey, fetchFn: getFetchFn(proxyUrl) },
-                )
-                if (!serpResult.isError && serpResult.images?.length) {
-                  result = { ...result, images: serpResult.images }
-                }
-              } catch (error) {
-                console.warn('[Chat 工具执行器] SerpAPI 配图失败，保留 Tavily 图片:', error)
-              }
-            }
-          }
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         result = { toolCallId: tc.id, content: `${tc.name} 未执行: ${message}`, isError: true }
