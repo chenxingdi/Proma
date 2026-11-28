@@ -7,16 +7,26 @@ import { Button } from '@/components/ui/button'
 import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from './primitives'
 import { SettingsSecretInput } from './primitives/SettingsSecretInput'
 
-interface SerpApiPublicSettings {
+interface ServiceCredentialStatus {
   configured: boolean
   keyHint: string
   environmentConfigured: boolean
 }
 
-const DEFAULT_SERPAPI_SETTINGS: SerpApiPublicSettings = {
+interface WebImageServiceSettings {
+  tavily: ServiceCredentialStatus
+  serpApi: ServiceCredentialStatus
+}
+
+const DEFAULT_CREDENTIAL_STATUS: ServiceCredentialStatus = {
   configured: false,
   keyHint: '',
   environmentConfigured: false,
+}
+
+const DEFAULT_SERVICE_SETTINGS: WebImageServiceSettings = {
+  tavily: DEFAULT_CREDENTIAL_STATUS,
+  serpApi: DEFAULT_CREDENTIAL_STATUS,
 }
 
 const DEFAULT_SETTINGS: VisionRelaySettingsValue = { enabled: false }
@@ -25,9 +35,11 @@ const DEFAULT_SETTINGS: VisionRelaySettingsValue = { enabled: false }
 export function VisionRelaySettings(): React.ReactElement {
   const [settings, setSettings] = React.useState<VisionRelaySettingsValue>(DEFAULT_SETTINGS)
   const [saving, setSaving] = React.useState(false)
-  const [serpApi, setSerpApi] = React.useState<SerpApiPublicSettings>(DEFAULT_SERPAPI_SETTINGS)
-  const [serpKeyDraft, setSerpKeyDraft] = React.useState('')
-  const [serpSaving, setSerpSaving] = React.useState(false)
+  const [serviceSettings, setServiceSettings] = React.useState<WebImageServiceSettings>(DEFAULT_SERVICE_SETTINGS)
+  const [serviceKeyDraft, setServiceKeyDraft] = React.useState('')
+  const [serviceSaving, setServiceSaving] = React.useState(false)
+  const [serviceTesting, setServiceTesting] = React.useState(false)
+  const [serviceMessage, setServiceMessage] = React.useState('')
   const [webImageSource, setWebImageSource] = React.useState<WebImageSource>('tavily')
 
   React.useEffect(() => {
@@ -37,14 +49,16 @@ export function VisionRelaySettings(): React.ReactElement {
         setWebImageSource(appSettings.webImageSource === 'serpapi' ? 'serpapi' : 'tavily')
       })
       .catch(console.error)
-    window.electronAPI.getSerpApiSettings()
-      .then(setSerpApi)
+    window.electronAPI.getWebImageServiceSettings()
+      .then(setServiceSettings)
       .catch(console.error)
   }, [])
 
   const saveWebImageSource = async (source: WebImageSource): Promise<void> => {
     const previous = webImageSource
     setWebImageSource(source)
+    setServiceKeyDraft('')
+    setServiceMessage('')
     try {
       await window.electronAPI.updateSettings({ webImageSource: source })
     } catch (error) {
@@ -53,31 +67,52 @@ export function VisionRelaySettings(): React.ReactElement {
     }
   }
 
-  const saveSerpApiKey = async (): Promise<void> => {
-    const apiKey = serpKeyDraft.trim()
+  const saveServiceKey = async (): Promise<void> => {
+    const apiKey = serviceKeyDraft.trim()
     if (!apiKey) return
-    setSerpSaving(true)
+    setServiceSaving(true)
+    setServiceMessage('')
     try {
-      const result = await window.electronAPI.updateSerpApiSettings({ apiKey })
-      setSerpApi(result)
-      setSerpKeyDraft('')
+      const result = await window.electronAPI.updateWebImageServiceApiKey(webImageSource, apiKey)
+      setServiceSettings(result)
+      setServiceKeyDraft('')
+      setServiceMessage('API Key 已保存')
     } catch (error) {
-      console.error('[视觉助手设置] SerpAPI Key 保存失败:', error)
+      console.error('[视觉助手设置] API Key 保存失败:', error)
+      setServiceMessage('保存失败，请重试')
     } finally {
-      setSerpSaving(false)
+      setServiceSaving(false)
     }
   }
 
-  const clearSerpApiKey = async (): Promise<void> => {
-    setSerpSaving(true)
+  const clearServiceKey = async (): Promise<void> => {
+    setServiceSaving(true)
+    setServiceMessage('')
     try {
-      const result = await window.electronAPI.updateSerpApiSettings({ apiKey: '' })
-      setSerpApi(result)
-      setSerpKeyDraft('')
+      const result = await window.electronAPI.updateWebImageServiceApiKey(webImageSource, '')
+      setServiceSettings(result)
+      setServiceKeyDraft('')
+      setServiceMessage('API Key 已清除')
     } catch (error) {
-      console.error('[视觉助手设置] SerpAPI Key 清除失败:', error)
+      console.error('[视觉助手设置] API Key 清除失败:', error)
+      setServiceMessage('清除失败，请重试')
     } finally {
-      setSerpSaving(false)
+      setServiceSaving(false)
+    }
+  }
+
+  const testServiceKey = async (): Promise<void> => {
+    setServiceTesting(true)
+    setServiceMessage('正在测试连接…')
+    try {
+      const draft = serviceKeyDraft.trim() || undefined
+      const result = await window.electronAPI.testWebImageServiceApiKey(webImageSource, draft)
+      setServiceMessage(result.message)
+    } catch (error) {
+      console.error('[视觉助手设置] API Key 测试失败:', error)
+      setServiceMessage('测试失败，请检查网络或 API Key')
+    } finally {
+      setServiceTesting(false)
     }
   }
 
@@ -99,6 +134,8 @@ export function VisionRelaySettings(): React.ReactElement {
     ? { channelId: settings.channelId, modelId: settings.modelId }
     : null
   const configured = Boolean(selectedModel)
+  const currentCredentials = webImageSource === 'serpapi' ? serviceSettings.serpApi : serviceSettings.tavily
+  const serviceLabel = webImageSource === 'serpapi' ? 'SerpAPI' : 'Tavily'
 
   return (
     <div className="space-y-8">
@@ -140,12 +177,12 @@ export function VisionRelaySettings(): React.ReactElement {
 
       <SettingsSection
         title="图片搜索"
-        description="选择联网结果自动配图使用的服务；SerpAPI 也可作为 Chat 中显式调用的图片搜索工具。"
+        description="选择联网结果自动配图使用的服务，并填写该服务的 API Key。Tavily 与 SerpAPI 共用同一套输入与测试流程。"
       >
         <SettingsCard>
           <SettingsSelect
             label="图片来源服务"
-            description="Tavily 使用来源网页中实际提取的图片；SerpAPI 在检测到来源网页含图后按同一关键词补充图片。两者都不会在无图网页中强行配图。"
+            description="Tavily 使用来源网页中实际提取的图片；SerpAPI 在检测到来源网页含图后按同一关键词补充图片。"
             value={webImageSource}
             onValueChange={(value) => void saveWebImageSource(value === 'serpapi' ? 'serpapi' : 'tavily')}
             options={[
@@ -154,42 +191,56 @@ export function VisionRelaySettings(): React.ReactElement {
             ]}
           />
           <SettingsRow
-            label="SerpAPI 图片搜索"
+            label={`${serviceLabel} API Key`}
             icon={<ImagePlus className="size-4 text-sky-500" />}
-            description={serpApi.configured
-              ? `已加密保存（${serpApi.keyHint}）；Chat 工具「图片搜索」已可用。`
-              : serpApi.environmentConfigured
-                ? '已从环境变量 PROMA_SERPAPI_KEY 读取密钥；也可在此加密保存。'
-                : '在 serpapi.com 注册获取 API Key，保存后在 Chat 中启用「图片搜索」工具。'}
+            description={currentCredentials.configured
+              ? `已配置（${currentCredentials.keyHint}）；也可用下方输入框替换后重新测试。`
+              : currentCredentials.environmentConfigured
+                ? '已从环境变量读取密钥；也可在此填写并保存。'
+                : `填写 ${serviceLabel} API Key 后保存并测试连接。`}
           />
           <SettingsSecretInput
-            label="SerpAPI API Key"
-            description="保存时通过系统密钥链加密；留空并保存不覆盖已有密钥。密钥只用于向 serpapi.com 发起图片搜索。"
-            value={serpKeyDraft}
-            onChange={setSerpKeyDraft}
-            placeholder={serpApi.configured ? '已保存；粘贴新 Key 可替换' : '输入 SerpAPI Key'}
-            disabled={serpSaving}
+            label={`${serviceLabel} API Key`}
+            description={webImageSource === 'tavily'
+              ? 'Tavily Key 用于联网搜索与来源网页图片提取；密钥保存在 Chat 工具凭据中。'
+              : 'SerpAPI Key 由系统密钥链加密保存；只用于 serpapi.com 图片搜索。'}
+            value={serviceKeyDraft}
+            onChange={setServiceKeyDraft}
+            placeholder={currentCredentials.configured ? '已保存；粘贴新 Key 可替换' : `输入 ${serviceLabel} API Key`}
+            disabled={serviceSaving || serviceTesting}
           />
+          {serviceMessage && (
+            <div className="px-4 pb-1 text-[12px] text-muted-foreground">{serviceMessage}</div>
+          )}
           <div className="flex items-center justify-end gap-2 px-4 pb-3">
-            {serpApi.configured && (
+            {currentCredentials.configured && (
               <Button
                 variant="ghost"
                 size="sm"
                 type="button"
-                disabled={serpSaving}
-                onClick={() => void clearSerpApiKey()}
+                disabled={serviceSaving || serviceTesting}
+                onClick={() => void clearServiceKey()}
                 className="text-[12px] text-muted-foreground hover:text-destructive"
               >
                 清除已保存密钥
               </Button>
             )}
             <Button
+              variant="outline"
               size="sm"
               type="button"
-              disabled={serpSaving || !serpKeyDraft.trim()}
-              onClick={() => void saveSerpApiKey()}
+              disabled={serviceSaving || serviceTesting}
+              onClick={() => void testServiceKey()}
             >
-              {serpSaving ? '保存中…' : '保存密钥'}
+              {serviceTesting ? '测试中…' : '测试连接'}
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              disabled={serviceSaving || serviceTesting || !serviceKeyDraft.trim()}
+              onClick={() => void saveServiceKey()}
+            >
+              {serviceSaving ? '保存中…' : '保存密钥'}
             </Button>
           </div>
         </SettingsCard>

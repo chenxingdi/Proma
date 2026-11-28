@@ -472,6 +472,13 @@ export const QUICK_TASK_IPC_CHANNELS = {
   GET_GLOBAL_SHORTCUT_REGISTRATION_STATUS: 'quick-task:get-global-shortcut-registration-status',
 } as const
 
+/** 图片来源服务凭据与连接测试的 IPC 通道；只返回脱敏状态 */
+export const WEB_IMAGE_SERVICE_IPC_CHANNELS = {
+  GET_SETTINGS: 'web-image-service:get-settings',
+  UPDATE_KEY: 'web-image-service:update-key',
+  TEST_CONNECTION: 'web-image-service:test-connection',
+} as const
+
 /** SerpAPI 图片搜索设置的 IPC 通道；只返回脱敏信息 */
 export const SERPAPI_IPC_CHANNELS = {
   GET_SETTINGS: 'serpapi:get-settings',

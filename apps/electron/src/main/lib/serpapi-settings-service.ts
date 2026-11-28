@@ -10,7 +10,7 @@ import type { SerpApiSettings, SerpApiSettingsUpdate } from '../../types'
 import { getSettings, updateSettings } from './settings-service'
 
 /** 环境变量后备，便于开发或企业环境不落盘密钥 */
-const SERPAPI_KEY_ENV = 'PROMA_SERPAPI_KEY'
+export const SERPAPI_KEY_ENV = 'PROMA_SERPAPI_KEY'
 
 /** 渲染进程看到的脱敏配置 */
 export interface PublicSerpApiSettings {
